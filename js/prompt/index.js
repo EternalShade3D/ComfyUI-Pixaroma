@@ -123,8 +123,14 @@ function injectCSS() {
        reserves a gutter varies by engine/version, and a ComfyUI theme can restyle
        ::-webkit-scrollbar to a different width for a textarea than for a div. So
        syncBackdropBox() MEASURES both columns and corrects any leftover gap. */
-    .pix-prm-backdrop { position:absolute; inset:0; padding:6px 8px; border:0;
-      font:12px/1.5 monospace; color:#e0e0e0; white-space:pre-wrap; word-wrap:break-word; overflow:hidden; scrollbar-gutter:stable; pointer-events:none; box-sizing:border-box; }
+    /* ETERNAL 2026-08-21: the inline colored backdrop caused a persistent caret/text
+       drift in this user's browser (two stacked text layers never stayed aligned,
+       and syncColumns' observer watches the border-box, so a scrollbar appearing
+       narrowed the textarea's column without re-syncing). Disabled the live backdrop
+       and made the textarea a normal opaque box (single text layer, like Prompt Pack,
+       which the user confirmed works). @tag coloring stays available in the expand
+       preview below. The div still exists (renderBackdrop writes to it) but is hidden. */
+    .pix-prm-backdrop { display:none; }
     /* overflow-wrap MUST match the backdrop's. syncBackdropBox equalises the two
        columns' WIDTH, but width parity is not wrap parity: the backdrop breaks a
        long unbroken token and a textarea defaults to overflow-wrap:normal, which
@@ -137,7 +143,7 @@ function injectCSS() {
        guarantee as the scrollbar-gutter guess that already failed for a user.
        State it explicitly instead of inheriting it. A long tag name is exactly
        what a tag library produces, so this node is the one most exposed. */
-    .pix-prm-ta { flex:1 1 auto; width:100%; height:100%; box-sizing:border-box; background:transparent; color:transparent;
+    .pix-prm-ta { flex:1 1 auto; width:100%; height:100%; box-sizing:border-box; background:transparent; color:#e0e0e0;
       border:0; border-radius:4px; padding:6px 8px; font:12px/1.5 monospace; resize:none; outline:none; scrollbar-gutter:stable;
       white-space:pre-wrap; overflow-wrap:break-word; caret-color:var(--acc); }
     .pix-prm-ta::placeholder { color:#6a6a6a; }
