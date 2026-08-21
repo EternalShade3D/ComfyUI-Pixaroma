@@ -148,13 +148,48 @@ function parseAnnotatedImageValue(value) {
 // to src.imgs, which for this node is the /view URL of the INPUT file - i.e.
 // always the original. Rather than guess a resized preview we cannot produce,
 // say plainly which picture is on screen.
-function upstreamResizeNote(node) {
+// A PixaromaSwitchSource can sit between the source and this node. It holds NO
+// image of its own (it only routes one bank's wire to the output), so src.imgs
+// is empty and the editor opened blank. Walk THROUGH the switch to the real,
+// currently-selected source node and use that. The active bank lives in
+// node.properties.switchSourceState ({ active:"A"|"B", ... }); output slot N
+// (0-based) maps to row N+1 and input a_{N+1}/b_{N+1}.
+function getRealImageSource(node) {
   const graph = node.graph;
   const input = (node.inputs || []).find((i) => i.name === "image");
-  if (!input || input.link == null || !graph) return "";
+  if (!input || input.link == null || !graph) return null;
   let link = graph.links?.[input.link];
   if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
   const src = link && graph.getNodeById(link.origin_id);
+  if (!src) return null;
+  if (src.comfyClass === "PixaromaSwitchSource" || src.type === "PixaromaSwitchSource") {
+    // node.properties.switchSourceState is written by the switch's own readState
+    // as a PARSED OBJECT (not a JSON string), so a bare JSON.parse() would
+    // THROW and leave us on the default bank - which is exactly why B was never
+    // picked. Handle both: JSON string -> parse, object -> use as-is.
+    let state = {};
+    try {
+      const raw = src.properties && src.properties.switchSourceState;
+      if (typeof raw === "string") state = JSON.parse(raw || "{}");
+      else if (raw && typeof raw === "object") state = raw;
+    } catch { }
+    const active = state.active === "B" ? "B" : "A";
+    const row = (link.origin_slot || 0) + 1;
+    const inName = (active === "A" ? "a_" : "b_") + row;
+    const inSlot = (src.inputs || []).find((s) => s.name === inName);
+    if (!inSlot || inSlot.link == null) return null;
+    let l2 = graph.links?.[inSlot.link];
+    if (!l2 && typeof graph.links?.get === "function") l2 = graph.links.get(inSlot.link);
+    const real = l2 && graph.getNodeById(l2.origin_id);
+    if (!real) return null;
+    return { node: real, slot: l2.origin_slot ?? 0 };
+  }
+  return { node: src, slot: link.origin_slot ?? 0 };
+}
+
+function upstreamResizeNote(node) {
+  const r = getRealImageSource(node);
+  const src = r && r.node;
   if (!src || src.comfyClass !== "PixaromaLoadImage") return "";
   let st = null;
   try {
@@ -171,26 +206,20 @@ function upstreamResizeNote(node) {
 
 function getUpstreamImageURL(node) {
   // Prefer the LIVE wired source so a just-changed Load Image (or any live
-  // preview) is what the editor opens. The cached executed-source URL below is
-  // only a fallback for generative upstreams whose pixels exist solely as the
-  // temp PNG the Python node saved on the last run. (Without this order,
-  // swapping the Load Image file showed the PREVIOUS run's image until re-run.)
-  const input = (node.inputs || []).find((i) => i.name === "image");
-  const graph = node.graph;
-  if (input && input.link != null && graph) {
-    let link = graph.links?.[input.link];
-    if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
-    const src = link && graph.getNodeById(link.origin_id);
-    if (src) {
-      if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
-        const w = (src.widgets || []).find((x) => x.name === "image");
-        if (w && w.value) return buildSourceURL(parseAnnotatedImageValue(w.value), true);
-      }
-      if (src.imgs && src.imgs.length > 0) {
-        const img = src.imgs[link.origin_slot] || src.imgs[0];
-        if (typeof img === "string") return img;
-        if (img && img.src) return img.src;
-      }
+  // preview) is what the editor opens. getRealImageSource walks through a
+  // PixaromaSwitchSource to the actual selected source, so the same logic that
+  // works for a direct wire also works behind a switch.
+  const r = getRealImageSource(node);
+  if (r) {
+    const src = r.node;
+    if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
+      const w = (src.widgets || []).find((x) => x.name === "image");
+      if (w && w.value) return buildSourceURL(parseAnnotatedImageValue(w.value), true);
+    }
+    if (src.imgs && src.imgs.length > 0) {
+      const img = src.imgs[r.slot] || src.imgs[0];
+      if (typeof img === "string") return img;
+      if (img && img.src) return img.src;
     }
   }
   // fallback: source PNG from the last Python execute (generative upstreams, or
@@ -433,6 +462,26 @@ app.registerExtension({
     };
     api.addEventListener("executed", onExec);
 
+    // When an upstream Switch Source Pixaroma flips its A/B bank, re-resolve the
+    // preview. The switch holds no image, so it can't push one - it fires a
+    // document event; we refresh only if THIS node's IMMEDIATE upstream image
+    // node is the switch that toggled (getRealImageSource walks through the
+    // switch to the real source, so it can't be used for the id match here).
+    const onSwitchChanged = (e) => {
+      const srcId = e?.detail?.id;
+      if (srcId == null) return;
+      const input = (node.inputs || []).find((i) => i.name === "image");
+      const graph = node.graph;
+      if (!input || input.link == null || !graph) return;
+      let link = graph.links?.[input.link];
+      if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
+      const up = link && graph.getNodeById(link.origin_id);
+      if (!up || up.id !== srcId) return;
+      node._pixInpaintSourceURL = null;
+      node._pixInpaintRefresh?.();
+    };
+    document.addEventListener("pix-switch-source-changed", onSwitchChanged);
+
     // wrap (don't clobber) any existing handler from the prototype / another ext;
     // forward all args, then run our image-input source-preview logic.
     const origConnChange = node.onConnectionsChange;
@@ -453,6 +502,7 @@ app.registerExtension({
       try { parts?.resizeObserver?.disconnect(); } catch (e) {}
       origRemoved?.call(node);
       try { api.removeEventListener("executed", onExec); } catch {}
+      try { document.removeEventListener("pix-switch-source-changed", onSwitchChanged); } catch {}
     };
   },
 });
