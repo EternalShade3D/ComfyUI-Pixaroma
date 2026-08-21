@@ -200,7 +200,13 @@ export function injectCSS() {
     /* ONLY the idea box takes the accent on focus. The readout is readOnly, and
        a focus ring is the strongest "you can type here" cue there is. */
     .pix-ap-ideawrap:focus-within { border-color:${ACC}; }
-    .pix-ap-ideabd { position:absolute; inset:0; padding:6px 8px; border:0;
+    /* ETERNAL 2026-08-21: the visible colored backdrop caused the SAME caret/text
+       drift as Prompt Pixaroma (two stacked text layers never stay aligned, and
+       the scrollbar/content-box re-sync is unreliable). Hide the live backdrop
+       and let the textarea show its own text - one layer, caret == glyphs, no
+       drift (same architecture as Prompt Pack, which works). @tag coloring while
+       typing is lost but the generated prompt readout below still shows it. */
+    .pix-ap-ideabd { display:none; position:absolute; inset:0; padding:6px 8px; border:0;
       font:11.5px/1.45 monospace; color:#ddd9d4; white-space:pre-wrap;
       word-wrap:break-word; overflow:hidden; scrollbar-gutter:stable;
       pointer-events:none; box-sizing:border-box; }
@@ -212,7 +218,7 @@ export function injectCSS() {
        shares that backdrop, so it shares the bug. It does not reproduce on this
        machine only because a ComfyUI stylesheet happens to supply break-word. */
     .pix-ap-idea { flex:1 1 auto; width:100%; height:100%; box-sizing:border-box;
-      background:transparent; color:transparent; caret-color:${ACC}; border:0;
+      background:transparent; color:#ddd9d4; caret-color:${ACC}; border:0;
       border-radius:4px; padding:6px 8px; font:11.5px/1.45 monospace; resize:none;
       outline:none; scrollbar-gutter:stable;
       white-space:pre-wrap; overflow-wrap:break-word; }
