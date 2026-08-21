@@ -165,14 +165,17 @@ class PixaromaInpaintCrop:
         try:
             sj = state.get("state_json", "{}") if isinstance(state, dict) else str(state)
             meta = json.loads(sj) if sj else {}
-            # Deterministic on the widget state ONLY. The painted mask / source are
-            # referenced by path INSIDE state_json, which is already part of the
-            # prompt (the InpaintCropWidget value) - so editing them already yields
-            # a different prompt + a cache miss. Reading the files' mtime here used
-            # to vary the Prompt-Caching key whenever the temp src/mask PNGs were
-            # re-created or cleaned between runs, forcing a full re-run even when
-            # the user changed nothing (a caching anti-pattern).
             parts.append(json.dumps(meta, sort_keys=True))  # deterministic regardless of key order
+            mp = meta.get("mask_path", "")
+            if mp:
+                full = cls._resolve_pixaroma_path(mp)
+                if full:
+                    parts.append(str(os.path.getmtime(full)))
+            sp = meta.get("src_path", "")
+            if sp:
+                fs = cls._resolve_pixaroma_path(sp)
+                if fs:
+                    parts.append(str(os.path.getmtime(fs)))
         except Exception:
             parts.append(str(state))
         return "|".join(parts)
