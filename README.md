@@ -26,6 +26,29 @@
 
 > 💡 **Updated Pixaroma and a node looks broken or old?** Hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (**Cmd+Shift+R** on Mac). The browser caches old node visuals, so without a hard refresh you can still see the previous version even though the update installed correctly.
 
+## 🔧 Local Fixes (this fork)
+
+> Maintained on the `eternal-inpaint-switch-fix` branch (base: upstream `main` @ `b8ae20e1`).
+> These are personal fixes, not part of the official Pixaroma release.
+
+### Inpaint Crop Pixaroma works behind Switch Source Pixaroma (Fixes 1–3)
+
+When **Inpaint Crop Pixaroma** receives its image input through a **Switch Source Pixaroma** node (instead of a direct Load Image wire), three things used to break. They are now fixed:
+
+- **Mask Editor opens the active image.** Clicking **Open Mask Editor** now shows the picture of the *currently selected A/B bank* on the Switch Source, not a blank or wrong image. The editor walks through the switch to the real source node and reads its state (`node.properties.switchSourceState`, handling both the JSON-string and parsed-object forms Pixaroma writes).
+- **Node preview updates on bank switch.** Toggling the Switch Source A/B bank fires a `pix-switch-source-changed` document event; Inpaint Crop listens and re-resolves its preview. (The switch holds no image of its own, so without this notification the preview never refreshed.)
+- **Upstream resize note resolves correctly** through the same real-source walk.
+
+**Files changed (vs upstream `b8ae20e1`):**
+
+| File | Change |
+|------|--------|
+| `js/inpaint_crop/index.js` | `getRealImageSource()` to walk through a Switch Source; `pix-switch-source-changed` listener; preview re-resolve on bank change. |
+| `js/switch_source/index.js` | Emit `pix-switch-source-changed` when the A/B bank toggles. |
+
+> **Not included:** an earlier change to the Inpaint Crop `IS_CHANGED` (removing a disk-mtime read) was reverted. It was not a fix — only an accidental detour while debugging a separate caching issue that turned out to be in another node (Image Receiver from comfyui-impact-pack, `trigger_always`).
+
+
 ## 🎨 Creative Suite
 
 Pixaroma turns ComfyUI into a powerful, easy-to-use design space. It brings professional editing right into your workflow!
