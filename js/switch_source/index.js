@@ -192,6 +192,10 @@ function buildControls(node) {
       writeState(node, s);
       refresh();
       updateOutputLabels(node);
+      // Tell any downstream node (e.g. Inpaint Crop Pixaroma) that the active
+      // bank changed, so its preview / Mask Editor source can re-resolve. The
+      // switch holds no image of its own, so it must notify readers explicitly.
+      try { document.dispatchEvent(new CustomEvent("pix-switch-source-changed", { detail: { id: node.id } })); } catch { }
       node.graph?.setDirtyCanvas?.(true, true);
     });
   }
