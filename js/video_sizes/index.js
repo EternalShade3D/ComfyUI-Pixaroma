@@ -12,8 +12,6 @@ import { hideJsonWidget } from "../shared/index.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { registerNodeHelp } from "../shared/help.mjs";
-import { registerNodeSettings } from "../shared/node_settings.mjs";
 import { pixAsset } from "../shared/api_url.mjs";
 import {
   BRAND, STATE_PROP, HIDDEN_INPUT,
