@@ -116,7 +116,7 @@ export function injectCSS() {
   document.head.appendChild(style);
 }
 
-function buildRows(node, sizeRow, orientContainer) {
+function buildRows(node, sizeRow, orientContainer, refresh) {
   const st = readState(node);
 
   sizeRow.textContent = "";
@@ -196,7 +196,7 @@ export function buildFace(node, { onGear }) {
     // integers. No user or external input. Mirrors Duration Pixaroma readout.
     readout.innerHTML =
       `<span>${r.label}</span><span class="dim">[really ${r.w} x ${r.h}]</span>`;
-    buildRows(node, sizeRow, orient);
+    buildRows(node, sizeRow, orient, refresh);
   }
 
   refresh();
