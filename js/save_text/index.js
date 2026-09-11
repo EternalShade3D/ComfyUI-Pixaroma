@@ -454,42 +454,14 @@ function installCacheTracker() {
 }
 
 // ── collecting one run ──────────────────────────────────────────────────────
+// ONE entry. The guards that belong to the DELIVERY of a result (a cached
+// replay, and the same result arriving down both paths) are deliberately NOT
+// here - they live in acceptDelivery() and are applied once per delivery, not
+// once per entry. Keeping them here silently limited the node to one entry per
+// run, which is what broke the folder-batch case (see acceptDelivery).
 async function collectRun(node, text) {
   const ui = uiOf(node);
   if (!ui) return;
-  // Drop a REPLAYED result from a node ComfyUI did not actually re-run - but
-  // fail OPEN on both counts below, because the cost of suppressing a genuine
-  // run (a lost entry) is far worse than the duplicate this prevents.
-  //
-  //  * `readBuffer(...).trim()` - with nothing collected there is nothing to
-  //    duplicate, so take the replay. Without this the gate REGRESSED "Clear,
-  //    then Run": this node has no graphToPrompt hook by design, so clearing
-  //    the box never reaches the prompt, the node stays cached, and the replay
-  //    was the only thing that would have refilled it. MEASURED - Run collected
-  //    nothing at all, with no message. Cannot double-collect: the first replay
-  //    makes the buffer non-empty, so a second queue is suppressed normally.
-  //
-  //  * the root-graph test - `cached_nodes` carries EXECUTION ids, which are
-  //    composite ("5:12") for a node inside a subgraph, while `node.id` is the
-  //    bare local id. So a subgraph node with local id N could be silenced by an
-  //    unrelated CACHED root node that happens to have id N, and subgraph local
-  //    ids start at 1 just like root ids. Bare prompt ids only ever name
-  //    root-graph nodes, so restricting the gate to those is precise; a build
-  //    with no rootGraph degrades to the previous behaviour.
-  const rootGraph = app.rootGraph || app.graph;
-  const isRootNode = !node.graph || node.graph === rootGraph;
-  if (isRootNode && readBuffer(node).trim() && _cachedThisRun.has(String(node.id))) return;
-
-  // The two delivery paths (socket `executed` and the per-node onExecuted hook)
-  // both fire on standard ComfyUI, and unlike a preview an APPEND is not
-  // idempotent. Order between them is not guaranteed, so the guard is
-  // symmetric: identical text inside a 2s window is treated as the same run.
-  // Cost: two deliberately identical prompts queued back to back with "Keep
-  // all" collapse to one. Narrow, and arguably what you want anyway.
-  const now = Date.now();
-  const prev = node._pixStxLastApplied;
-  if (prev && prev.text === text && now - prev.at < 2000) return;
-  node._pixStxLastApplied = { text, at: now };
 
   const st = readState(node);
   if (!shouldCollect(readBuffer(node), text, st)) return;
@@ -764,11 +736,77 @@ function setupNode(node) {
 }
 
 // ── result delivery ─────────────────────────────────────────────────────────
-function pickText(output) {
+// EVERY text in the payload, not just the first.
+//
+// ⚠️ One run can carry MANY results. When an upstream node emits a list
+// (Load Images from Folder is OUTPUT_IS_LIST), ComfyUI runs this node once per
+// item and MERGES the ui outputs into a SINGLE `executed` event whose array
+// holds them all. MEASURED 2026-09-11 with three images through
+// `Load Images from Folder -> AI Prompt -> Save Text`, the server sent:
+//   {"pixaroma_save_text":[{"text":"abstract"},{"text":"Architecture"},{"text":"BallerinaBunny"}]}
+// and this function used to return `rows[0].text`, so the node collected
+// "abstract" and dropped the other two. Reported as "one description instead of
+// one per image" - nothing was wrong upstream, the results were all here.
+function pickTexts(output) {
   const rows = output?.pixaroma_save_text;
-  if (!Array.isArray(rows) || !rows.length) return null;
-  const t = rows[0]?.text;
-  return typeof t === "string" ? t : null;
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r) => r?.text).filter((t) => typeof t === "string");
+}
+
+// The guards that belong to a DELIVERY rather than to an entry. Applied ONCE
+// per event, keyed on the whole batch, so a run carrying several results is
+// judged as one delivery and every entry in it is then collected.
+//
+// Both fail OPEN, because the cost of suppressing a genuine run (lost entries)
+// is far worse than the duplicate it prevents.
+function acceptDelivery(node, texts) {
+  //  * `readBuffer(...).trim()` - with nothing collected there is nothing to
+  //    duplicate, so take the replay. Without this the gate REGRESSED "Clear,
+  //    then Run": this node has no graphToPrompt hook by design, so clearing
+  //    the box never reaches the prompt, the node stays cached, and the replay
+  //    was the only thing that would have refilled it. MEASURED - Run collected
+  //    nothing at all, with no message. Cannot double-collect: the first replay
+  //    makes the buffer non-empty, so a second queue is suppressed normally.
+  //
+  //  * the root-graph test - `cached_nodes` carries EXECUTION ids, which are
+  //    composite ("5:12") for a node inside a subgraph, while `node.id` is the
+  //    bare local id. So a subgraph node with local id N could be silenced by an
+  //    unrelated CACHED root node that happens to have id N, and subgraph local
+  //    ids start at 1 just like root ids. Bare prompt ids only ever name
+  //    root-graph nodes, so restricting the gate to those is precise; a build
+  //    with no rootGraph degrades to the previous behaviour.
+  const rootGraph = app.rootGraph || app.graph;
+  const isRootNode = !node.graph || node.graph === rootGraph;
+  if (isRootNode && readBuffer(node).trim() && _cachedThisRun.has(String(node.id))) return false;
+
+  // The two delivery paths (socket `executed` and the per-node onExecuted hook)
+  // both fire on standard ComfyUI, and unlike a preview an APPEND is not
+  // idempotent. Order between them is not guaranteed, so the guard is
+  // symmetric: an identical BATCH inside a 2s window is treated as the same run.
+  //
+  // Keyed on the whole batch with a NUL join, not on one text: keying per entry
+  // made a batch containing two identical prompts drop the second, and a
+  // separator that cannot appear in a prompt keeps ["a","b"] distinct from
+  // ["a\u0000b"]. Cost is unchanged from before: two deliberately identical runs
+  // queued back to back with "Keep all" collapse to one.
+  const key = texts.join("\u0000");
+  const now = Date.now();
+  const prev = node._pixStxLastApplied;
+  if (prev && prev.text === key && now - prev.at < 2000) return false;
+  node._pixStxLastApplied = { text: key, at: now };
+  return true;
+}
+
+// Collect a whole delivery, one entry at a time and STRICTLY SEQUENTIALLY.
+// collectRun awaits a save, and every value it reads before that await is stale
+// after it (pattern file #4, four separate bugs) - so overlapping calls would
+// reintroduce exactly those races. Re-check the node between entries: a save
+// takes real time and the node can be deleted or the workflow switched.
+async function collectDelivery(node, texts) {
+  for (const t of texts) {
+    if (!uiOf(node)) return;
+    await collectRun(node, t);
+  }
 }
 
 function installExecutedListener() {
@@ -780,9 +818,10 @@ function installExecutedListener() {
     const graph = app.graph;
     const node = graph?.getNodeById?.(id) ?? graph?.getNodeById?.(parseInt(id, 10));
     if (!node || node.comfyClass !== COMFY_CLASS) return;
-    const text = pickText(detail?.output);
-    if (text == null) return;
-    collectRun(node, text);
+    const texts = pickTexts(detail?.output);
+    if (!texts.length) return;
+    if (!acceptDelivery(node, texts)) return;
+    collectDelivery(node, texts);
   });
 }
 
@@ -889,13 +928,13 @@ app.registerExtension({
 
     // The other half of the two delivery paths: a host whose frontend hands
     // results to nodes itself, instead of re-broadcasting the raw socket event,
-    // only reaches onExecuted. collectRun dedupes, so a host that fires both
+    // only reaches onExecuted. acceptDelivery dedupes, so a host that fires both
     // still collects once.
     const origExec = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (output) {
       const r = origExec?.apply(this, arguments);
-      const text = pickText(output);
-      if (text != null) collectRun(this, text);
+      const texts = pickTexts(output);
+      if (texts.length && acceptDelivery(this, texts)) collectDelivery(this, texts);
       return r;
     };
   },
