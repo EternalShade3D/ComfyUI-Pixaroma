@@ -44,7 +44,6 @@ import { formatModelSize } from "../shared/utils.mjs";
 import {
   ACC,
   createAccentSection,
-  registerNodeAccent,
   registerNodeSettings,
 } from "../shared/node_settings.mjs";
 import { CLASS, readState, slotConnected, writeState } from "./core.mjs";
@@ -1006,10 +1005,19 @@ export function openIdeaEditor(node, onSaved) {
 }
 
 // One registration gives BOTH surfaces: the orange gear in the node selection
-// toolbar and the central right-click entry. ownMenuItem stops the generic entry
-// doubling the one this node adds itself.
-registerNodeAccent(CLASS, { title: "Music Prompt" });
+// toolbar and the central right-click entry.
+//
+// ⚠️ EXACTLY ONE registration per class. `_defs.set` REPLACES wholesale, so a
+// second call silently discards the first. This used to call registerNodeAccent
+// on the line above; that one lost the race (it is overwritten by this call), so
+// the panel was right but its `title` was gone and the right-click entry read
+// "⚙ Node settings" instead of naming the node. The colour block is unaffected -
+// createAccentSection is already in this panel, which is the documented way.
+//
+// ownMenuItem is FALSE because this node adds no menu entry of its own, so the
+// central one in js/help_toolbar/index.js is the only right-click route in.
 registerNodeSettings(CLASS, {
+  title: "Music Prompt",
   open: (node) => openMusicPromptPanel(node, () => node._pixMpRender?.()),
   ownMenuItem: false,
 });

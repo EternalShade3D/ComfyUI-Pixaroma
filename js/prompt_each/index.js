@@ -11,7 +11,7 @@ import { PROMPT_EACH_HELP } from "./help.mjs";
 import {
   applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes,
   installCanvasZoomPassthrough, installNativeTextMenu, installNodeAccent,
-  registerNodeAccent, registerNodeSettings, registerNodeHelp, notifyGraphChanged,
+  registerNodeSettings, registerNodeHelp, notifyGraphChanged,
   onRendererChange,
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
@@ -59,13 +59,25 @@ registerNodeHelp(CLASS, PROMPT_EACH_HELP);
 // The settings live on the NODE INSTANCE, not on the node type: two Prompt Each
 // nodes in one workflow can legitimately split differently. So this registers a
 // custom panel rather than `rows` (which write ComfyUI settings, i.e. per-type
-// defaults). ownMenuItem stops the central right-click entry doubling our own.
+// defaults).
+//
+// ⚠️ EXACTLY ONE registration per class. `_defs.set` REPLACES wholesale, so a
+// second call silently discards the first. This used to call registerNodeAccent
+// as well, on the next line, and that one won: the def came back kind "accent",
+// so the toolbar gear and the right-click entry opened the GENERIC colour panel
+// instead of this node's settings, and ownMenuItem reverted to false. It looked
+// fine in use only because the node's OWN face gear calls openPanel directly.
+// The colour block is not lost by dropping it - settings.mjs already drops
+// createAccentSection into this panel, which is the documented way.
+//
+// ownMenuItem stays FALSE on purpose: this node adds no menu entry of its own,
+// so the central one in js/help_toolbar/index.js is the only way to reach these
+// settings by right-click.
 registerNodeSettings(CLASS, {
   title: "Prompt Each",
-  ownMenuItem: true,
+  ownMenuItem: false,
   open: (node) => openPanel(node),
 });
-registerNodeAccent(CLASS, { title: "Prompt Each" });
 
 function openPanel(node) {
   if (isPanelOpenFor(node)) {
