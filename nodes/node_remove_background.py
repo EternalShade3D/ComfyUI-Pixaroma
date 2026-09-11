@@ -15,7 +15,8 @@ import folder_paths
 from ._bg_removal_helpers import (
     SENTINEL_NO_MODELS,
     SENTINEL_NEED_COMFY_UPDATE,
-    _INSTALL_MESSAGE,
+    _install_message,
+    _roots_block,
     _get_cached_model,
     _list_models,
     _resolution_for_filename,
@@ -28,7 +29,7 @@ class PixaromaRemoveBackground:
         return {
             "required": {
                 "image": ("IMAGE", {"tooltip": "The image to remove the background from."}),
-                "model": (_list_models(), {"tooltip": "Which BiRefNet model to use. Filenames containing 'matt' or 'hr' run at 2048px (better for hair / fine edges); all others run at 1024px. Models live in ComfyUI/models/background_removal/."}),
+                "model": (_list_models(), {"tooltip": "Which BiRefNet model to use. Filenames containing 'matt' or 'hr' run at 2048px (better for hair / fine edges); all others run at 1024px. Models are read from ComfyUI/models/background_removal/ and from any background_removal folder added by extra_model_paths.yaml."}),
             }
         }
 
@@ -45,7 +46,9 @@ class PixaromaRemoveBackground:
         "Remove an image background with a BiRefNet model and return the "
         "cutout (RGBA), the foreground mask, and the inverted mask in one "
         "node.\n\n"
-        "Models load from ComfyUI/models/background_removal/. Filename "
+        "Models load from ComfyUI/models/background_removal/, and from any "
+        "background_removal folder configured in extra_model_paths.yaml, so a "
+        "shared-models install can keep them on another drive. Filename "
         "controls preprocessing resolution: 'matt' or 'hr' in the name "
         "(case-insensitive) preprocesses at 2048; all others at 1024. "
         "Recommended names: birefnet.safetensors (standard), "
@@ -68,14 +71,16 @@ class PixaromaRemoveBackground:
                 "needs the newer core."
             )
         if model == SENTINEL_NO_MODELS:
-            raise ValueError(_INSTALL_MESSAGE)
+            raise ValueError(_install_message())
 
         ckpt_path = folder_paths.get_full_path("background_removal", model)
         if not ckpt_path or not os.path.isfile(ckpt_path):
             raise ValueError(
-                f"Remove Background Pixaroma: model file {model!r} not found "
-                "in ComfyUI/models/background_removal/. The dropdown may be "
-                "stale - reload the page to refresh it."
+                f"Remove Background Pixaroma: model file {model!r} not found.\n"
+                "Searched these folders (this includes any added by "
+                "extra_model_paths.yaml):\n"
+                + _roots_block() + "\n"
+                "The dropdown may also be stale - reload the page to refresh it."
             )
 
         image_size = _resolution_for_filename(model)

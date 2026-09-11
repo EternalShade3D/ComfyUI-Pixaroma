@@ -298,11 +298,45 @@ def _is_oom_error(exc):
     )
 
 
-_INSTALL_MESSAGE = (
+def search_roots():
+    """Every folder ComfyUI actually looks in for a background-removal model,
+    in search order: the default models dir PLUS anything extra_model_paths.yaml
+    adds under `background_removal:`.
+
+    The lookups themselves (get_filename_list / get_full_path) have always
+    searched all of these, but every user-facing message used to name a
+    hardcoded "ComfyUI/models/background_removal/". On a shared-models install
+    (ComfyUI Easy Install points that key at an external drive) that folder is
+    the one place the model is NOT, so the message walked people into copying
+    the file into the wrong directory - which is exactly what was reported on
+    2026-09-09. Name the real folders instead and the dead end disappears.
+    """
+    try:
+        return [str(p) for p in (folder_paths.get_folder_paths("background_removal") or [])]
+    except Exception:
+        return []
+
+
+def _roots_block(indent="  "):
+    """The searched folders as a printable block, for an error message."""
+    roots = search_roots()
+    if not roots:
+        return (
+            indent + "(ComfyUI has no 'background_removal' folder configured - "
+            "you may need a newer ComfyUI, or a background_removal: entry in "
+            "extra_model_paths.yaml)"
+        )
+    return "\n".join(indent + r for r in roots)
+
+
+def _install_message():
+    return (
     "No background-removal models found.\n"
     "\n"
-    "Drop a BiRefNet .safetensors into ComfyUI/models/background_removal/ and "
-    "refresh the workflow.\n"
+    "Drop a BiRefNet .safetensors into one of these folders and refresh the "
+    "workflow (every folder below is searched, including any added by "
+    "extra_model_paths.yaml):\n"
+    + _roots_block() + "\n"
     "\n"
     "Recommended files:\n"
     "  birefnet.safetensors           standard, 1024, hard edges\n"

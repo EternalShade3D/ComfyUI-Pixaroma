@@ -1454,7 +1454,8 @@ const HELP = {
         heading: "How to use",
         bullets: [
           "Wire an image into `image` and pick a model from the `model` dropdown.",
-          "Models live in `ComfyUI/models/background_removal/`. If the dropdown is empty, download one from HuggingFace first.",
+          "Models live in `ComfyUI/models/background_removal/`, and in any `background_removal` folder you have added to `extra_model_paths.yaml` - so a shared-models install can keep them on another drive.",
+          "If the dropdown is empty, download a model from HuggingFace first. Pick the empty entry and run, and the error names every folder that was searched.",
           "Filenames containing `matt` or `hr` preprocess at 2048px - better for hair and fine edges. Others use 1024px.",
           "Connect the cutout `image` for compositing, `mask` for inpainting (white = kept foreground), or `inverted_mask`.",
         ],
