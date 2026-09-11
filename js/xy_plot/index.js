@@ -249,7 +249,23 @@ app.registerExtension({
         // empty area below the content. If there's no grid showing and the node
         // is far taller than its content, shrink it to fit (legacy only; Nodes
         // 2.0 manages its own body height). Deferred so the DOM is laid out.
+        //
+        // NEVER on the load path (Vue Compat #18/#19). The "size > want + 120"
+        // test was believed to be self-limiting ("no churn on correctly-sized
+        // nodes") and it is not: core's own ComfyNode._arrangeWidgets briefly
+        // inflates the node while a workflow loads - MEASURED 2026-09-11, it set
+        // this node to 2110px during drawConnections - and this rAF lands inside
+        // that window, sees a node "far taller than its content", and writes a
+        // height core then re-arranges away 47ms later. The result was a node
+        // that never settled, flip-flopping 553 <-> 566 across repeated opens
+        // (566, 566, 553, 553, 566, 566 over six loads) and flagging an
+        // untouched workflow modified about half the time.
+        //
+        // Gated, the load path leaves node.size alone, core settles the node
+        // once, and every later open is byte-identical. The fit still does its
+        // job on every non-load render (renderer switch, a value edit, reset).
         requestAnimationFrame(() => {
+          if (isGraphLoading()) return;
           if (isVueNodes() || node._pixXyLastGrid || !node._pixXyRoot) return;
           const want = Math.max(MIN_H, measureContentHeight(node._pixXyRoot) + CHROME);
           if (node.size[1] > want + 120) {

@@ -270,8 +270,40 @@ textarea.pix-xy-input{resize:vertical;min-height:92px;white-space:pre-wrap;overf
   document.head.appendChild(tag);
 }
 
+// Below this root width the node has not been laid out yet and any height read
+// off it is meaningless. The real root is ~400px inside a 420px node (MIN_W),
+// and Nodes 2.0 never renders this body narrower than a couple of hundred, so
+// nothing legitimate sits near this number.
+const LAYOUT_READY_W = 100;
+
+// The last trustworthy measurement per root, so an early call can answer with
+// something plausible instead of a wild one. WeakMap: a removed node's root is
+// collected with it.
+const _lastGoodHeight = new WeakMap();
+
+/**
+ * Content height of the node body.
+ *
+ * ⚠️ A measurement taken before the node is laid out is GARBAGE, and it is
+ * garbage in the DANGEROUS direction: with no usable width every text block
+ * wraps, so the children measure several times their real height. MEASURED
+ * during a workflow load on 2026-09-11: root width 18px, children
+ * 693/693/135/98/100/50/208 = 2039 against a settled 113/113/31/27/28/27/96 =
+ * 497. `getMinHeight` therefore answered 2060, core's _arrangeWidgets sized the
+ * node to 2110px, and that height could be SAVED - the node flip-flopped
+ * 553 <-> 566 across repeated opens and sometimes stuck at 2110.
+ *
+ * So refuse to answer until the root has a real width, and hand back the last
+ * good value (or the old 280 fallback on the very first call). Every caller
+ * then gets a plausible number: as a getMinHeight FLOOR it means core simply
+ * keeps whatever the workflow saved, and the true floor applies on the next
+ * call once the width is real.
+ */
 export function measureContentHeight(root) {
   if (!root) return 120;
+  if (!root.isConnected || root.offsetWidth < LAYOUT_READY_W) {
+    return _lastGoodHeight.get(root) ?? 280;
+  }
   let h = 0;
   const kids = root.children;
   for (let i = 0; i < kids.length; i++) {
@@ -282,7 +314,9 @@ export function measureContentHeight(root) {
   const gap = parseFloat(cs.rowGap || cs.gap || "0") || 0;
   h += gap * Math.max(0, kids.length - 1);
   h += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  return h < 20 ? 280 : h;
+  if (h < 20) return _lastGoodHeight.get(root) ?? 280;
+  _lastGoodHeight.set(root, h);
+  return h;
 }
 
 export function buildRoot() {

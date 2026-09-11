@@ -43,8 +43,29 @@ const RESIZE_MODES = [
 ];
 
 // ── node body height (sum visible children; NOT scrollHeight) ─────────────────
+// Below this root width the node has not been laid out and any height read off
+// it is meaningless. The real root is ~350px inside a 370px node; nothing
+// legitimate is near 100.
+const LAYOUT_READY_W = 100;
+const _lastGoodHeight = new WeakMap();
+
+// ⚠️ A measurement taken before the node is laid out is GARBAGE, and it inflates:
+// with no usable width the rows wrap. MEASURED during a workflow load on
+// 2026-09-11: root width 20px, children 28/101/0/40 against a settled
+// 28/31/0/27, so getMinHeight answered 200 instead of 120 and core grew the node
+// to 346. The node then flip-flopped 278 <-> 346 on every open, flagging an
+// untouched workflow modified. (It only showed up with another heavy node on the
+// canvas - alone it settled fast enough to hide, which is why "it looks fine
+// here" was not evidence.)
+//
+// getMinHeight is a FLOOR, so while we cannot measure, hand back the last good
+// value: core keeps whatever the workflow saved and the true floor applies on
+// the next call. Same guard as js/xy_plot/ui.mjs.
 function measureContentHeight(root) {
   if (!root) return 110;
+  if (!root.isConnected || root.offsetWidth < LAYOUT_READY_W) {
+    return _lastGoodHeight.get(root) ?? 110;
+  }
   let h = 0;
   let n = 0;
   for (const ch of root.children) {
@@ -54,10 +75,12 @@ function measureContentHeight(root) {
       n++;
     }
   }
-  if (n === 0) return 110; // pre-attach placeholder
+  if (n === 0) return _lastGoodHeight.get(root) ?? 110; // pre-attach placeholder
   h += 16; // root vertical padding (8 + 8)
   h += (n - 1) * 8; // row gaps
-  return Math.max(96, h);
+  const out = Math.max(96, h);
+  _lastGoodHeight.set(root, out);
+  return out;
 }
 
 // Refit the node height to its content (after the resize panel expands/collapses).
