@@ -386,6 +386,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **September 11, 2026 · v1.4.145**
+- **Fixed: a button colour you picked came back orange after a reload**, and the hover highlight stayed orange too.
+- **Fixed: opening a workflow and closing it asked "Save changes?" with nothing changed.** XY Plot and Load Images from Folder were resizing themselves.
+- **Remove Background now names the folders it looked in** when a model is missing, instead of only the default one.
+- **Plus: Control Panel help explains a slider's Step**, which also re-snaps your value.
+
 ### **September 7, 2026 · v1.4.144**
 - **Fixed: selecting text in Prompt, AI Prompt and Music Prompt showed no highlight.** The words were selected and copying worked, but nothing showed, so there was no way to tell.
 
