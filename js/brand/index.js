@@ -1,5 +1,6 @@
 import { app } from "/scripts/app.js";
 import { installPixaromaChangeNet } from "../shared/graph_changed.mjs";
+import { installBypassRepair } from "../shared/bypass_repair.mjs";
 
 // ── Pixaroma brand defaults ──────────────────────────────────────────────
 // Single source of truth for the dark brand colors that every Pixaroma node
@@ -28,6 +29,11 @@ const BODY_COLOR      = "#2a2a2a";   // matches Resolution root surface
 // change is not recorded until the user's next mouseup, so the workflow can sit
 // there looking unmodified. See graph_changed.mjs for the full mechanism.
 installPixaromaChangeNet();
+
+// Bypassing a node silently drops, or re-points, a wire into any wildcard input,
+// because core picks the bypassed node's input by INDEX when the consumer is "*".
+// Installed here because brand/ is the one extension that always loads.
+installBypassRepair();
 
 app.registerExtension({
   name: "Pixaroma.BrandDefaults",

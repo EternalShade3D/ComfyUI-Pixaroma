@@ -56,6 +56,7 @@ export { installNativeTextMenu } from "./native_text_menu.mjs";
 // the graph on mouseup; a DOM control commits on click, one phase later, so the
 // change is otherwise never recorded and the workflow never looks modified.
 export { notifyGraphChanged } from "./graph_changed.mjs";
+export { installBypassRepair, repairBypassedWildcardInputs } from "./bypass_repair.mjs";
 
 // Node UI convention #27 - a document.body popup must track the canvas zoom and
 // grow to fit, or it reads tiny beside a zoomed-in node. Use this for EVERY new
