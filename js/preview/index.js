@@ -984,8 +984,12 @@ function createStripWidget() {
     },
     draw(ctx, node, widget_width, y, h) {
       this._node = node;
-      _acc = accentOf(node);
-      _accHover = accentHover(node);   // the selected-frame border reads this
+      _acc = accentOf(node);           // the selected-frame border reads this
+      // The strip does not paint a hover fill, so nothing here reads _accHover.
+      // Kept in step with _acc anyway: the two must never disagree about which
+      // node they describe, and a future hover state on the strip would
+      // otherwise silently inherit whichever node painted last.
+      _accHover = accentHover(node);
       const frames = node._pixaromaFrames || [];
       if (!frames.length) return;
       // Height resolution:

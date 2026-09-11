@@ -262,8 +262,22 @@ app.registerExtension({
         // untouched workflow modified about half the time.
         //
         // Gated, the load path leaves node.size alone, core settles the node
-        // once, and every later open is byte-identical. The fit still does its
-        // job on every non-load render (renderer switch, a value edit, reset).
+        // once, and every later open is byte-identical.
+        //
+        // ⚠️ Be clear about what that costs, because the shape of this block is
+        // misleading: this rAF is inside onNodeCreated's queueMicrotask, so it
+        // runs ONCE PER NODE CONSTRUCTION and nowhere else. It is not a render
+        // hook - a renderer switch does not re-run onNodeCreated, and a value
+        // edit or reset resizes through fitNode instead. So with the gate it
+        // still fires for a node constructed OUTSIDE a load (paste, duplicate,
+        // a fresh drop) and no longer for a workflow open.
+        //
+        // That is deliberate, not an oversight. Auto-shrinking a node while a
+        // workflow opens is precisely the write Vue Compat #18 forbids, and it
+        // is what made this node flip-flop. A workflow saved over-tall in Nodes
+        // 2.0 now opens at its saved height in legacy and the user resizes it,
+        // which is the correct trade. Do not "restore" this by removing the
+        // gate; fix the measurement instead (see measureContentHeight).
         requestAnimationFrame(() => {
           if (isGraphLoading()) return;
           if (isVueNodes() || node._pixXyLastGrid || !node._pixXyRoot) return;
