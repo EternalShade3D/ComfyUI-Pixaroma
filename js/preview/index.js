@@ -3,7 +3,7 @@ import { pixApiUrl } from "../shared/api_url.mjs";
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { api } from "/scripts/api.js";
 import { BRAND } from "../shared/utils.mjs";
-import { registerNodeAccent, accentOf, installNodeAccent, nodeSetting } from "../shared/node_settings.mjs";
+import { registerNodeAccent, accentOf, accentHover, ACC_HOVER, installNodeAccent, nodeSetting } from "../shared/node_settings.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
 import { applyFilenameTokenRefs, installFilenameTokenResolver } from "../shared/filename_tokens.mjs";
 
@@ -55,7 +55,10 @@ const DEFAULT_H = 380;
 // variable and paintBtn takes no node argument, so each draw() sets this once
 // per pass. Painting is synchronous per node, so it is never read for another.
 let _acc = BRAND;
-const COLOR_ACTIVE_FILL_HOVER = "#ff8a5e";
+// The hover fill for a button that is ALREADY filled with the accent. It has to
+// follow the accent too: a fixed lighter orange stayed orange while the button
+// under it recoloured, which a user reported on 2026-09-08.
+let _accHover = "#ff8a5e";
 const COLOR_ACTIVE_TEXT = "#fff";
 const COLOR_DISABLED_FILL = "#2a2c2e";
 const COLOR_DISABLED_STROKE = "#444";
@@ -240,7 +243,7 @@ function paintBtn(ctx, rect, active, hovered) {
   const { x, y, w, h, label } = rect;
   ctx.save();
   ctx.fillStyle = active
-    ? (hovered ? COLOR_ACTIVE_FILL_HOVER : _acc)
+    ? (hovered ? _accHover : _acc)
     : COLOR_DISABLED_FILL;
   ctx.strokeStyle = active ? _acc : COLOR_DISABLED_STROKE;
   ctx.lineWidth = 1;
@@ -700,7 +703,8 @@ function createButtonsWidget() {
       return [width, BTN_H + STRIP_V_PAD * 2];
     },
     draw(ctx, node, widget_width, y) {
-      _acc = accentOf(node);   // the paint helpers below read this
+      _acc = accentOf(node);
+      _accHover = accentHover(node);   // the paint helpers below read this
       // Enforce minimum width at draw time. onResize is unreliable on the Vue
       // frontend (Compat #13) and Align Pixaroma's resize intercept (Align
       // Pattern #6) can bypass it entirely — both can leave the node narrower
@@ -980,7 +984,8 @@ function createStripWidget() {
     },
     draw(ctx, node, widget_width, y, h) {
       this._node = node;
-      _acc = accentOf(node);   // the selected-frame border reads this
+      _acc = accentOf(node);
+      _accHover = accentHover(node);   // the selected-frame border reads this
       const frames = node._pixaromaFrames || [];
       if (!frames.length) return;
       // Height resolution:
@@ -1218,7 +1223,7 @@ function injectButtonsCSS() {
       font:12px sans-serif; padding:0 6px; box-sizing:border-box; cursor:pointer;
       overflow:hidden; text-overflow:ellipsis; white-space:nowrap; user-select:none;
     }
-    .pix-pv-btn:hover:not(:disabled) { background:${COLOR_ACTIVE_FILL_HOVER}; border-color:${COLOR_ACTIVE_FILL_HOVER}; }
+    .pix-pv-btn:hover:not(:disabled) { background:${ACC_HOVER}; border-color:${ACC_HOVER}; }
     .pix-pv-btn:disabled { background:${COLOR_DISABLED_FILL}; border-color:${COLOR_DISABLED_STROKE}; color:${COLOR_DISABLED_TEXT}; cursor:default; }
     .pix-pv-toast {
       position:absolute; left:${SIDE_PAD}px; right:${SIDE_PAD}px; top:0; height:${BTN_H}px;

@@ -6,6 +6,7 @@
 // remaining height at the bottom.
 import { BRAND } from "../shared/utils.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
+import { ACC_HOVER } from "../shared/node_settings.mjs";
 import { getState } from "./state.mjs";
 
 const HEADER_H = 130;       // toggle + status + two button rows
@@ -38,7 +39,7 @@ function injectCSS() {
       box-sizing:border-box; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; user-select:none; }
     .pix-pi-btn:hover:not(:disabled) { border-color:var(--pix-acc,#f66744); color:#fff; }
     .pix-pi-btn.primary:not(:disabled) { background:var(--pix-acc,#f66744); border-color:var(--pix-acc,#f66744); color:#fff; }
-    .pix-pi-btn.primary:hover:not(:disabled) { background:#ff8a5e; border-color:#ff8a5e; }
+    .pix-pi-btn.primary:hover:not(:disabled) { background:${ACC_HOVER}; border-color:${ACC_HOVER}; }
     .pix-pi-btn:disabled { opacity:0.45; cursor:default; }
     .pix-pi-preview { flex:1 1 0; min-height:0; position:relative; background:#1d1d1d;
       border:1px solid #333; border-radius:4px; overflow:hidden; }

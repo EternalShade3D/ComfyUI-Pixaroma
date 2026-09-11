@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import { hideJsonWidget, applyAdaptiveCanvasOnly, isVueNodes, measureRootContent,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
-import { registerNodeSettings, installNodeAccent, ACC } from "../shared/node_settings.mjs";
+import { registerNodeSettings, installNodeAccent, ACC, ACC_HOVER } from "../shared/node_settings.mjs";
 import { openSeedSettings, closeSeedSettingsFor } from "./settings.mjs";
 import { openSeedHistory, closeSeedHistoryFor, refreshSeedHistory } from "./history.mjs";
 import { registerRunWorkflowPatcher, readNodeProp, writeNodeProp } from "../shared/run_seed_embed.mjs";
@@ -106,7 +106,7 @@ function injectCSS() {
     }
     .pix-seed-spinbtn + .pix-seed-spinbtn { border-top: 1px solid #3a3d40; }
     .pix-seed-spinbtn:hover { background: ${ACC}; color: #fff; }
-    .pix-seed-spinbtn:active { background: #ff8a5e; }
+    .pix-seed-spinbtn:active { background: ${ACC_HOVER}; }
     /* Compact layout: a slim standalone spinner (full border + its own rounded
        corners) rather than one attached to the number's right edge. */
     .pix-seed-spin.compact {

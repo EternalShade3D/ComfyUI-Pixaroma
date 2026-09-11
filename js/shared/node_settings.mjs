@@ -265,6 +265,37 @@ export function accentRgba(node, alpha = 1) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/**
+ * A LIGHTER accent, for the hover (or active) state of a control that is ALREADY
+ * filled with the accent - Preview Image's four buttons, the Pause nodes' primary
+ * button, Seed's spinner. Those all used to hard-code `#ff8a5e`, a lighter
+ * orange, so a node whose buttons had been recoloured flashed back to orange the
+ * moment the pointer touched one. Reported 2026-09-08 ("the buttons take the
+ * colour but the hover highlight stays default orange").
+ *
+ * 82% is the ratio that lands closest to that `#ff8a5e` for the brand orange, so
+ * a user who never picks a colour sees what they always saw.
+ *
+ * Idle stays `ACC`; only the hover/active rule uses this.
+ */
+export const ACC_HOVER = `color-mix(in srgb, ${ACC} 82%, #fff)`;
+
+/**
+ * The same lighter accent as a hex, for a CANVAS that cannot read a CSS variable
+ * (Preview Image paints its buttons in the legacy renderer). Mixes towards white
+ * with the same ratio ACC_HOVER uses, so the two renderers match.
+ */
+export function accentHover(node, t = 0.82) {
+  const hex = String(accentOf(node) || BRAND).trim();
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;                    // a named / rgb() colour: leave it alone
+  let h = m[1];
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const mix = (c) => Math.round(parseInt(c, 16) * t + 255 * (1 - t));
+  const to2 = (v) => v.toString(16).padStart(2, "0");
+  return `#${to2(mix(h.slice(0, 2)))}${to2(mix(h.slice(2, 4)))}${to2(mix(h.slice(4, 6)))}`;
+}
+
 /** Put the node's accent on a DOM element as the --pix-acc custom property. */
 export function applyAccent(el, node) {
   if (el?.style) el.style.setProperty(ACCENT_VAR, accentOf(node));
@@ -287,6 +318,57 @@ export function installNodeAccent(node, ...els) {
     applyAccent(e, node);
   }
   node._pixAccentEls = keep;
+  settleNodeAccent(node);
+}
+
+/**
+ * Re-apply the accent once configure() has restored node.properties.
+ *
+ * `installNodeAccent` runs from the node's creation path, and configure() - which
+ * restores the saved pick - runs AFTER it (Vue Compat #8). So the colour written
+ * above is whatever the DEFAULTS said before the workflow was read, and a node
+ * carrying its own saved colour opened in the brand orange while its settings
+ * panel correctly showed the colour the user had picked.
+ *
+ * MEASURED 2026-09-11, reopening a workflow: 42 of the 48 DOM node types came
+ * back orange. The six that did not (Prompt Stack / Multi / Pack / Each, XY Plot,
+ * Find and Replace) only escaped because they re-render their rows on configure
+ * and happen to call installNodeAccent again.
+ *
+ * The order, measured on frontend 1.51.10, is:
+ *   onNodeCreated -> configure ENTER -> configure EXIT -> microtask
+ * so a microtask is the FIRST point where the restored value is readable, and
+ * being in the same tick it repaints before anything is shown.
+ *
+ * Deliberately narrow, so this cannot misfire on the load path:
+ *   - it only acts when the settled colour DIFFERS from the one just applied, so
+ *     a fresh node, or any node following the defaults, does no work at all;
+ *   - when it does act it goes through repaintAccent, which writes DOM style,
+ *     flags a canvas redraw and calls the node's own onChange. None of those
+ *     touch serialized state, so an untouched workflow cannot open "modified"
+ *     (Vue Compat #18).
+ * The onChange call is what reaches the nodes that paint from their OWN --acc
+ * variable on inner elements (Prompt, Sliders, LoRA Loader, Sizes, Outpaint,
+ * Outpaint Stitch, Load Image Mini) - writing --pix-acc on the root cannot.
+ *
+ * Those seven never call installNodeAccent, so they are covered by the CENTRAL
+ * `nodeCreated` hook in js/help_toolbar/index.js, which calls this for every
+ * node that registered settings. Calling it twice is free: the queue flag
+ * dedupes, and a second pass sees no change and returns.
+ */
+export function settleNodeAccent(node) {
+  if (!node) return;
+  if (node._pixAccentSettleQueued) return;
+  node._pixAccentSettleQueued = true;
+  let applied;
+  try { applied = accentOf(node); } catch { applied = null; }
+  queueMicrotask(() => {
+    node._pixAccentSettleQueued = false;
+    try {
+      if (accentOf(node) === applied) return;
+      repaintAccent(node);
+    } catch {}
+  });
 }
 
 // Every element that should carry the var for this node: the roots it handed us,
@@ -294,7 +376,14 @@ export function installNodeAccent(node, ...els) {
 // plus the Nodes 2.0 node element so descendants inherit it.
 function accentTargets(node) {
   const out = [];
-  for (const e of node._pixAccentEls || []) if (e?.isConnected) out.push(e);
+  // NOT filtered on isConnected. An element that is registered but not yet in
+  // the document still needs the var: Longest Side hands us its floated slot
+  // band, which is appended a beat later, so the settle pass skipped it and the
+  // band alone stayed orange while the node body recoloured (measured
+  // 2026-09-11). Writing an inline style on a detached element is harmless and
+  // applies the moment it is attached. Pruning dead entries stays where it
+  // belongs, in installNodeAccent.
+  for (const e of node._pixAccentEls || []) if (e?.style) out.push(e);
   for (const w of node.widgets || []) {
     const e = w.element || w.inputEl;
     if (e?.style && !out.includes(e)) out.push(e);

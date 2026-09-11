@@ -103,6 +103,7 @@ export {
 
 export {
   ACC,
+  ACC_HOVER,
   ACCENT_VAR,
   GLOBAL_ACCENT_SETTING,
   DEFAULT_ACCENT_PROP,
@@ -119,6 +120,7 @@ export {
   closeNodeSettingsFor,
   accentOf,
   accentRgba,
+  accentHover,
   setNodeAccent,
   applyAccent,
   installNodeAccent,

@@ -36,7 +36,7 @@ import { openHelpPopup, openHelpFor, getNodeHelp } from "../shared/index.mjs";
 import { pixAsset } from "../shared/api_url.mjs";
 import {
   getNodeSettings, openNodeSettings, repaintAllAccents, closeNodeSettingsFor,
-  GLOBAL_ACCENT_SETTING, BRAND,
+  settleNodeAccent, GLOBAL_ACCENT_SETTING, BRAND,
 } from "../shared/node_settings.mjs";
 import "./help_defs.mjs";     // registers help for most Pixaroma nodes (one place to edit)
 
@@ -164,6 +164,21 @@ app.registerExtension({
     if (!def || def.ownMenuItem) return [];
     const label = def.menuLabel || (def.title || "Node") + " settings";
     return [null, { content: "⚙ " + label, callback: () => openNodeSettings(node) }];
+  },
+
+  // A node's saved accent lives in node.properties, which configure() restores
+  // AFTER this hook runs (Vue Compat #8) - so every node painted its colour from
+  // the DEFAULTS and a saved pick never reached the face. Measured 2026-09-11:
+  // reopening a workflow brought 42 of 48 DOM node types back orange while their
+  // settings panel still showed the right colour. settleNodeAccent re-applies on
+  // the next microtask, and only when the colour actually changed.
+  //
+  // Central for the same reason onRemoved below is: seven nodes (Prompt, Sliders,
+  // LoRA Loader, Sizes, Outpaint, Outpaint Stitch, Load Image Mini) paint from
+  // their own --acc var and never call installNodeAccent, so nothing in the
+  // shared installer can reach them. Here they are covered by registration alone.
+  nodeCreated(node) {
+    try { if (getNodeSettings(node?.comfyClass)) settleNodeAccent(node); } catch {}
   },
 
   // Deleting a node while its settings panel is open must close that panel.

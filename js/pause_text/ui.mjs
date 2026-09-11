@@ -6,6 +6,7 @@
 // the Pause/Pass toggle and the Copy/Revert icons; then the count + Regenerate /
 // Continue buttons. No status dot (it read as an input dot).
 import { BRAND } from "../shared/utils.mjs";
+import { ACC_HOVER } from "../shared/node_settings.mjs";
 import { getState, isEdited } from "./state.mjs";
 
 // Fixed vertical budget for the non-fill rows -> getMinHeight is a per-renderer
@@ -77,7 +78,7 @@ function injectCSS() {
       box-sizing:border-box; white-space:nowrap; user-select:none; flex:0 0 auto; }
     .pix-pt-btn:hover:not(:disabled) { border-color:var(--pix-acc,#f66744); color:#fff; }
     .pix-pt-btn.primary:not(:disabled) { background:var(--pix-acc,#f66744); border-color:var(--pix-acc,#f66744); color:#fff; }
-    .pix-pt-btn.primary:hover:not(:disabled) { background:#ff8a5e; border-color:#ff8a5e; }
+    .pix-pt-btn.primary:hover:not(:disabled) { background:${ACC_HOVER}; border-color:${ACC_HOVER}; }
     .pix-pt-btn:disabled { opacity:0.45; cursor:default; }
   `;
   document.head.appendChild(s);
