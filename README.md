@@ -386,9 +386,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 11, 2026 · v1.4.145**
+### **September 11, 2026 · v1.4.145–v1.4.146**
+- **Fixed: Save Text kept only the first result** when a whole folder of images ran through it. Every one is collected now.
 - **Fixed: a button colour you picked came back orange after a reload**, and the hover highlight stayed orange too.
 - **Fixed: opening a workflow and closing it asked "Save changes?" with nothing changed.** XY Plot and Load Images from Folder were resizing themselves.
+- **Fixed: the settings gear on Prompt Each and Music Prompt** opened the colour panel instead of the node's own settings.
 - **Remove Background now names the folders it looked in** when a model is missing, instead of only the default one.
 - **Plus: Control Panel help explains a slider's Step**, which also re-snaps your value.
 
