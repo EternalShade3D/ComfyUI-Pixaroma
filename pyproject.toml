@@ -6,9 +6,13 @@ license = { file = "LICENSE" }
 
 keywords = ["comfyui", "image-editor", "3d", "paint", "layers", "compositor", "compare", "crop", "label", "audio-reactive", "video", "mp4", "pixaroma"]
 
-# Core dependencies are none (PIL/torch come from ComfyUI).
-# rembg is optional; the Remove BG button will show an error if missing.
-dependencies = []
+# PIL / torch come from ComfyUI itself.
+# imageio-ffmpeg bundles the ffmpeg binary the video nodes need (Save Mp4, Save
+# Video, Load Video, Load Video Frame, First Last Frame). It was previously left
+# undeclared, which worked only where another pack happened to install it - so a
+# Desktop or portable install got "ffmpeg was not found" with nothing to explain it.
+# rembg stays optional; the Remove BG button reports it if missing.
+dependencies = ["imageio-ffmpeg"]
 
 [project.optional-dependencies]
 rembg = ["rembg>=2.0.50", "onnxruntime>=1.14.0"]
