@@ -2,10 +2,21 @@
 of a workflow on/off.
 
 The user wires the last node of each "scene" into a row. The JS frontend
-paints per-row pills and, on click, walks upstream and sets node.mode = 2
-(mute) or 4 (bypass) on every reached upstream node. This Python class is
-a no-op - it exists only to declare the 32 optional ANY input slots and
-the category for menu placement.
+paints per-row pills and, on click, sets node.mode = 2 (mute) or 4
+(bypass) on the node wired DIRECTLY into that row - not on the whole
+upstream chain. That is enough, because ComfyUI's executor is lazy: with
+the wired node skipped, anything upstream of it that nothing else needs
+is skipped too. Only the wired node greys out on the canvas, which is the
+intended visual. The one exception is a row wired to ANOTHER Mute Switch,
+where the cascade recurses into that switch's own inputs so an outer
+switch can control a group of inner ones.
+
+This Python class is a no-op - it exists only to declare the 32 optional
+ANY input slots and the category for menu placement.
+
+See .claude/patterns/mute-switch.md #1 and #2 - the direct-only rule is
+the deliberate v2 semantic and the old whole-chain walker was removed on
+purpose. Do not reintroduce it.
 """
 from ._type_helpers import ANY
 
@@ -24,9 +35,13 @@ class PixaromaMuteSwitch:
         "combination of scenes can run). The pill at top-right switches "
         "between Mute (the scene does not run at all) and Bypass (each "
         "node in the scene passes its input through unchanged).\n\n"
-        "When several scenes share an upstream node, that node only gets "
-        "muted when every scene that depends on it is OFF - so you never "
-        "accidentally break a scene that is still active."
+        "Switching a row off sets the node wired into that row to skipped. "
+        "Everything feeding only that node is skipped with it, because "
+        "ComfyUI does not run anything the result no longer needs - so wire "
+        "the LAST node of a scene into the row, not the first.\n\n"
+        "A row can also be wired to another Mute Switch, and then switching "
+        "that row off skips everything wired into the inner switch too. That "
+        "is how one switch can turn a whole group of scenes on and off."
     )
 
     @classmethod

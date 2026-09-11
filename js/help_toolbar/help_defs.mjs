@@ -1658,7 +1658,7 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Wire the last node of each branch (usually a KSampler) into a row. Clicking a row's pill skips or enables that entire upstream branch on the next Run. Useful for workflows with several scenes or style variants where you only want to render a subset at a time.",
+        body: "Wire the last node of each branch (usually a KSampler) into a row. Clicking a row's pill skips or enables that branch on the next Run. Useful for workflows with several scenes or style variants where you only want to render a subset at a time.\n\nOnly the node you wired into the row greys out on the canvas. Everything feeding just that node is skipped along with it, because ComfyUI never runs anything the result no longer needs. That is why the row wants the LAST node of a branch rather than the first.",
       },
       {
         heading: "Mode pills",
