@@ -54,6 +54,20 @@ function isWildcard(type) {
   return type === "*" || type === "" || type == null;
 }
 
+// Is this one of OUR nodes? ⚠️ `comfyClass.startsWith("Pixaroma")` is WRONG and was
+// the first version of this test: two of our 82 classes are named the other way
+// round - `NotifyPixaroma` and `KreaLoraConvertPixaroma` - and Notify Pixaroma has
+// a wildcard `any` input, so a startsWith gate silently left the node that most
+// needs this fix uncovered. Match the CATEGORY the way `js/brand/index.js` does
+// (that is the pack's own ownership test), with a substring on the class as the
+// belt for anything reached before its def is attached.
+function isOurNode(node) {
+  const cls = node.comfyClass || node.type || "";
+  if (cls.includes("Pixaroma")) return true;
+  const cat = node.constructor?.nodeData?.category;
+  return typeof cat === "string" && cat.startsWith("👑 Pixaroma");
+}
+
 // LiteGraph's own compatibility test, with the wildcard cases spelled out because
 // `isValidConnection` is not guaranteed to be reachable in every build.
 function typesCompatible(a, b) {
@@ -145,8 +159,7 @@ export function repairBypassedWildcardInputs(prompt, graph = app.graph) {
   if (!output || !graph?._nodes) return edits;
 
   for (const node of graph._nodes) {
-    const cls = node.comfyClass || node.type || "";
-    if (!cls.startsWith("Pixaroma")) continue; // our own nodes only
+    if (!isOurNode(node)) continue; // our own nodes only
     if (node.mode === MODE_MUTED || node.mode === MODE_BYPASS) continue;
 
     const entry = output[String(node.id)];
@@ -187,7 +200,7 @@ export function repairBypassedWildcardInputs(prompt, graph = app.graph) {
       entry.inputs[slot.name] = next;
       edits.push({
         node: String(node.id),
-        cls,
+        cls: node.comfyClass || node.type || "",
         input: slot.name,
         from: current ?? null,
         to: next,
