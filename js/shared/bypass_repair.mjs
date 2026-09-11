@@ -45,14 +45,22 @@
 // validated). Baseline before this module: 3 DROPPED, 1 MISROUTED, 3 OK.
 
 import { app } from "/scripts/app.js";
+import { slotAccepts, isWildcardType } from "./slot_types.mjs";
 
 const MODE_MUTED = 2;
 const MODE_BYPASS = 4;
 const MAX_HOPS = 64; // a chain longer than this is pathological; bail rather than spin
 
-function isWildcard(type) {
-  return type === "*" || type === "" || type == null;
-}
+// Wildcard + type-compatibility both come from `js/shared/slot_types.mjs`, which is
+// the pack's ONE slot-type reader (Vue Compat #22). ⚠️ Do NOT hand-roll either of
+// these back: a V3 `io.MultiType` input reaches the browser as the COMMA-JOINED
+// string "FLOAT,INT,BOOLEAN" (core's own Math Expression node is built that way),
+// so any `===` comparison judges a perfectly valid slot incompatible. The first
+// version of this file did exactly that in a fallback, and a reviewer showed it
+// could then walk PAST the correct input and overwrite a good value with a
+// different one - the single way this module could ever corrupt a working prompt.
+const isWildcard = isWildcardType;
+const typesCompatible = slotAccepts;
 
 // Is this one of OUR nodes? ⚠️ `comfyClass.startsWith("Pixaroma")` is WRONG and was
 // the first version of this test: two of our 82 classes are named the other way
@@ -66,20 +74,6 @@ function isOurNode(node) {
   if (cls.includes("Pixaroma")) return true;
   const cat = node.constructor?.nodeData?.category;
   return typeof cat === "string" && cat.startsWith("👑 Pixaroma");
-}
-
-// LiteGraph's own compatibility test, with the wildcard cases spelled out because
-// `isValidConnection` is not guaranteed to be reachable in every build.
-function typesCompatible(a, b) {
-  if (isWildcard(a) || isWildcard(b)) return true;
-  try {
-    if (typeof LiteGraph?.isValidConnection === "function") {
-      return !!LiteGraph.isValidConnection(a, b);
-    }
-  } catch {
-    /* fall through to the string compare below */
-  }
-  return String(a).toUpperCase() === String(b).toUpperCase();
 }
 
 function getLink(graph, linkId) {
@@ -102,14 +96,20 @@ function bypassInputIndex(node, outSlot, wantType) {
   const inputs = node.inputs || [];
   if (!inputs.length) return -1;
 
+  // 1. The same index, when it can actually carry the type. This tier is what
+  //    makes the module safe: it is also core's blind wildcard pick, so whenever
+  //    the same-index slot IS compatible we agree with core and change nothing.
   const same = inputs[outSlot];
   if (same && typesCompatible(same.type, wantType)) return outSlot;
 
-  const exact = inputs.findIndex(
-    (s) => !isWildcard(s.type) && String(s.type).toUpperCase() === String(wantType).toUpperCase()
-  );
-  if (exact !== -1) return exact;
+  // 2. A concretely-typed input that accepts it, preferred over a wildcard one so
+  //    a real STRING beats a pass-through `*`. ⚠️ Membership, NOT `===` - a
+  //    multi-type slot is the comma-joined "FLOAT,INT,BOOLEAN" and an equality
+  //    test walks straight past it (Vue Compat #22).
+  const typed = inputs.findIndex((s) => !isWildcard(s.type) && typesCompatible(s.type, wantType));
+  if (typed !== -1) return typed;
 
+  // 3. Anything that accepts it, wildcards included.
   return inputs.findIndex((s) => typesCompatible(s.type, wantType));
 }
 
