@@ -21,7 +21,7 @@ import {
 } from "./ui.mjs";
 import {
   setModel, statusOf, captureModel, detach, requestDraw, modelVersion, clearCaches,
-  knownNodes, canvasAttached,
+  knownNodes, canvasAttached, refreshIfReplaced,
 } from "./engine.mjs";
 import { openLoad3DPanel, closeLoad3DPanelFor, isLoad3DPanelOpenFor } from "./settings.mjs";
 import { LOAD_3D_HELP } from "./help.mjs";
@@ -157,7 +157,7 @@ app.registerExtension({
       node.size[1] = DEFAULT_H;
 
       queueMicrotask(() => {
-        syncModel(node);
+        if (node.graph) syncModel(node);
         renderFace(node);
       });
       watchModels();
@@ -170,10 +170,15 @@ app.registerExtension({
       // DOM and the engine only. Nothing here writes node.properties, node.size
       // or slots, so an untouched workflow never opens "modified" (Vue Compat #18).
       hideModelWidget(this);
-      syncModel(this);
+      // Only a node that is IN a graph loads its model. Copy, clone and Convert
+      // to Subgraph configure a throwaway copy that is never added, and loading
+      // for it downloaded and parsed the whole model for nothing (measured: a
+      // GET and a full load on every clone). Paste and workflow load add the
+      // node before configuring it, and the 500 ms poll catches anything else.
+      if (this.graph) syncModel(this);
       renderFace(this);
       queueMicrotask(() => {
-        syncModel(this);
+        if (this.graph) syncModel(this);
         renderFace(this);
       });
       watchModels();
@@ -275,18 +280,23 @@ async function uploadPicture(blob, filename) {
   return `${data?.subfolder || CAPTURE_SUBFOLDER}/${data?.name || filename} [temp]`;
 }
 
+// Only the picture's two names are sent. Python never reads the size (the names
+// already carry it), and sending it anyway re-ran a model-only graph, and
+// everything after it, whenever Width or Height was touched.
 async function pictureState(node, model) {
   if (!node) return {};
-  const st = readState(node);
-  const out = { w: st.w, h: st.h };
   // Nothing reads the picture: skip the draw and the upload entirely.
-  if (!(outputLinked(node, 1) || outputLinked(node, 2))) return out;
-  if (!model || model === NONE) return out;
-  const key = renderKey(`${model}#${modelVersion(model)}`, st);
-  const hit = _uploaded.get(key);
-  if (hit) return { ...out, ...hit };
+  if (!(outputLinked(node, 1) || outputLinked(node, 2))) return {};
+  if (!model || model === NONE) return {};
+  // Read ONCE: this same state names the files and is what gets drawn.
+  const st = readState(node);
   try {
-    const shot = await captureModel(node, model);
+    // A file replaced on disk under the same name must not reuse its old picture.
+    await refreshIfReplaced(node, model);
+    const key = renderKey(`${model}#${modelVersion(model)}`, st);
+    const hit = _uploaded.get(key);
+    if (hit) return { ...hit };
+    const shot = await captureModel(node, model, st);
     const base = `l3d_${key}`;
     const names = {
       image: await uploadPicture(shot.image, `${base}.png`),
@@ -294,11 +304,11 @@ async function pictureState(node, model) {
     };
     _uploaded.set(key, names);
     while (_uploaded.size > 64) _uploaded.delete(_uploaded.keys().next().value);
-    return { ...out, ...names };
+    return { ...names };
   } catch (e) {
     console.warn("[Pixaroma.Load3D] the picture could not be made", e);
     flash(node, `The picture could not be made: ${e?.message || e}`, true, 8000);
-    return out;
+    return {};
   }
 }
 

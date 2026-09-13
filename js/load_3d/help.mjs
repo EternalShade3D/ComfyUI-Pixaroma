@@ -42,7 +42,8 @@ export const LOAD_3D_HELP = {
         ["Double-click", "Frames the whole model again."],
         ["Front, Back, Left, Right, Top", "Jump straight to that side. Left is the model's own left "
           + "side, so it looks towards the left edge of the picture, which is what multi-view 3D "
-          + "models expect."],
+          + "models expect. The sides follow the way the file was saved, so if Front shows the "
+          + "wrong side, give the model a quarter turn in the gear settings."],
         ["3/4", "A front corner, seen a little from above."],
         ["Fit", "Frames the whole model again and keeps the angle."],
       ],

@@ -98,6 +98,25 @@ const _bufCache = new Map();
 const BUF_TTL = 120000;
 const BUF_MAX = 3;
 
+// Which copy of a file was downloaded. A model replaced on disk keeps its name,
+// so this is how a Run notices the file changed under a view drawn from the old
+// one (measured: the pyramid's picture was still sent after the file became a
+// cube). ComfyUI's /view answers with the ETag and Last-Modified of the file.
+function stampOf(res) {
+  return {
+    etag: (res.headers.get("etag") || "").replace(/^W\//, ""),
+    modified: res.headers.get("last-modified") || "",
+  };
+}
+
+function sameStamp(a, b) {
+  if (a.etag && b.etag) return a.etag === b.etag;
+  if (a.modified && b.modified) return a.modified === b.modified;
+  // Nothing comparable (a proxy stripped both): keep what is there rather than
+  // redraw and re-run everything downstream on every Run.
+  return true;
+}
+
 function fetchBuffer(url) {
   const now = Date.now();
   for (const [k, v] of _bufCache) if (now - v.at > BUF_TTL) _bufCache.delete(k);
@@ -110,7 +129,7 @@ function fetchBuffer(url) {
     if (!res.ok) {
       throw new Error(res.status === 404 ? "the file is not there any more" : `the server answered ${res.status}`);
     }
-    return res.arrayBuffer();
+    return { buf: await res.arrayBuffer(), stamp: stampOf(res) };
   });
   promise.catch(() => _bufCache.delete(url));
   _bufCache.set(url, { at: now, promise });
@@ -127,13 +146,33 @@ export function modelVersion(value) {
   return _versions.get(viewUrl(p.type, p.subfolder, p.filename)) || 0;
 }
 
-/** Forget a downloaded file, after an upload replaced it under the same name. */
+/** Forget a downloaded file that was replaced under the same name (an upload, or refreshIfReplaced). */
 export function invalidateModel(value) {
   const p = splitModelName(value);
   const url = viewUrl(p.type, p.subfolder, p.filename);
   _bufCache.delete(url);
   _versions.set(url, (_versions.get(url) || 0) + 1);
   for (const rec of _recs.values()) if (rec.value === String(value)) rec.value = "";
+}
+
+/**
+ * Before a Run draws `value` for `node`: when the file on disk is no longer the
+ * copy this node drew (replaced under the same name outside the Upload button,
+ * a re-export from a 3D app say), forget it so the picture is drawn again from
+ * the new file. One HEAD request; any failure keeps what is there.
+ */
+export async function refreshIfReplaced(node, value) {
+  const rec = _recs.get(node);
+  if (!rec || rec.value !== String(value) || rec.status !== "ready" || !rec.stamp) return false;
+  const p = splitModelName(value);
+  let now = null;
+  try {
+    const res = await fetch(viewUrl(p.type, p.subfolder, p.filename), { method: "HEAD", cache: "no-store" });
+    if (res.ok) now = stampOf(res);
+  } catch (_e) { /* offline or refused: keep what is there */ }
+  if (!now || sameStamp(now, rec.stamp)) return false;
+  invalidateModel(value);
+  return true;
 }
 
 /** R (Refresh Node Definitions) drops what was downloaded. */
@@ -407,7 +446,8 @@ export function setModel(node, value) {
     try {
       const THREE = await loadLibs();
       const p = splitModelName(v);
-      const buf = await fetchBuffer(viewUrl(p.type, p.subfolder, p.filename));
+      const got = await fetchBuffer(viewUrl(p.type, p.subfolder, p.filename));
+      const buf = got?.buf || got;
       if (seq !== rec.seq) return;
       const { object, polys } = await parseModel(THREE, p, buf);
       if (seq !== rec.seq) {
@@ -417,6 +457,8 @@ export function setModel(node, value) {
       const view = ensureView(THREE, rec);
       disposeModel(rec);
       rec.model = prepareModel(object, polys, buf.byteLength, p.ext);
+      // Which copy of the file this view was drawn from (see refreshIfReplaced).
+      rec.stamp = got?.stamp || null;
       view.holder.add(object);
       view.orient = "";
       rec.info = rec.model.info;
@@ -1000,13 +1042,16 @@ function canvas2d(src, w, h) {
  * node's redraw can run during an await, and it repaints that canvas and
  * re-aims this node's camera.
  */
-export async function captureModel(node, value) {
+export async function captureModel(node, value, state = null) {
   await ensureReady(node, value);
   const THREE = await loadLibs();
   const r = getRenderer(THREE);
   if (!r) throw new Error("WebGL is not available in this browser");
   const rec = recOf(node);
-  const st = readState(node);
+  // Draw the state the CALLER named the picture after. Reading it again here,
+  // after the awaits above, stored a view changed while the model was loading
+  // under the old view's file name (measured: a Left picture saved as Front).
+  const st = state || readState(node);
   const limit = Math.min(r.capabilities?.maxTextureSize || 4096, 16384);
   let w = st.w;
   let h = st.h;

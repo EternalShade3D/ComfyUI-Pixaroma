@@ -92,7 +92,7 @@ export function injectCSS() {
 .${ROOT} .pix-l3d-info{flex:0 0 auto;height:22px;box-sizing:border-box;display:flex;align-items:center;background:rgba(0,0,0,.25);border-radius:4px;padding:0 8px;font-size:11px;color:#aaa;white-space:nowrap;overflow:hidden;}
 .${ROOT} .pix-l3d-info span{overflow:hidden;text-overflow:ellipsis;}
 .${ROOT} .pix-l3d-info.bad{color:#e8826f;}
-.pix-l3d-pop{position:fixed;z-index:10900;background:#232323;border:1px solid #555;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.5);overflow:auto;font-family:${F};padding:.25em 0;}
+.pix-l3d-pop{position:fixed;z-index:10900;background:#232323;border:1px solid #555;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.5);max-height:320px;overflow:auto;font-family:${F};padding:.25em 0;}
 .pix-l3d-pop .sec{padding:.5em .8em .2em;color:#8a8a8a;font-size:.85em;letter-spacing:.3px;}
 .pix-l3d-pop .it{padding:.35em .9em .35em 1.3em;cursor:pointer;font-size:1em;color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .pix-l3d-pop .it:hover{background:#2f2f2f;}
@@ -384,7 +384,11 @@ export function closePopup() {
 }
 
 function onOutside(e) {
-  if (_popup && !_popup.contains(e.target)) closePopup();
+  if (!_popup || _popup.contains(e.target)) return;
+  // A press on the node's own model field is left to that field's click, which
+  // closes the open list. Closing here as well let that click reopen it.
+  if (_popup._pixNode?._pixL3dEls?.dd?.contains(e.target)) return;
+  closePopup();
 }
 function onWheelOutside(e) {
   // Gate on containment, or scrolling a long list closes it (Load Image #14).
@@ -411,7 +415,7 @@ async function openPicker(node) {
   pop.appendChild(el("div", "em", "reading the model folders ..."));
   document.body.appendChild(pop);
   _popup = pop;
-  placeZoomedPopup(pop, els.dd, { baseFontPx: 12, minWidthPx: 200 });
+  placeZoomedPopup(pop, els.dd, { baseFontPx: 12, minWidthPx: 200, baseMaxHeightPx: 320 });
   setTimeout(() => {
     if (_popup !== pop) return;
     document.addEventListener("pointerdown", onOutside, true);
@@ -446,7 +450,7 @@ async function openPicker(node) {
       if (v === cur) onEl = it;
     }
   }
-  placeZoomedPopup(pop, els.dd, { baseFontPx: 12, minWidthPx: 200 });
+  placeZoomedPopup(pop, els.dd, { baseFontPx: 12, minWidthPx: 200, baseMaxHeightPx: 320 });
   renderFace(node);
   try { onEl?.scrollIntoView({ block: "nearest" }); } catch (_e) { /* old browser */ }
 }
