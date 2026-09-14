@@ -34,6 +34,10 @@ export const MESH_REPAIR_HELP = {
         ["To 3D print it", "Wire the `stl` output into Save 3D Model. It writes a .stl file into "
           + "ComfyUI's output/3d folder that a slicer opens directly. The model stands upright the "
           + "way slicers expect, and its longest side is 100 mm (change it in the gear)."],
+        ["If the stl preview looks empty", "Press Fit to Viewer, the middle of the three small buttons "
+          + "under Save 3D Model's preview. At 100 mm the model is far bigger than that preview expects, "
+          + "so it can start out of view. It then lies on its back there, because ComfyUI's viewer and "
+          + "slicers treat a different direction as up. In the slicer it stands upright."],
         ["To keep the colours", "Wire the `mesh` output into Save 3D Model instead. That writes a "
           + ".glb with the colours, which Load 3D Pixaroma can open again. Wire both if you want both "
           + "files."],

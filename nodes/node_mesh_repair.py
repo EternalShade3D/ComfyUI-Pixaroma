@@ -315,7 +315,8 @@ class PixaromaMeshRepair:
         "open again), or pass it on to Decimate Mesh, UV unwrap or Paint Mesh.",
         "The repaired model as an STL file for a 3D printer's slicer. Wire it into Save 3D Model to "
         "write a .stl into output/3d. It stands upright the way slicers expect and its longest side "
-        "is 100 mm, which the gear can change. STL keeps no colours.",
+        "is 100 mm, which the gear can change. STL keeps no colours. If Save 3D Model's preview looks "
+        "empty, press its Fit to Viewer button; the model lies on its back there but stands up in a slicer.",
         "What was wrong and what was fixed, in words: holes, broken edges, loose bits, how solid the "
         "inside is, and the triangle count before and after.",
     )
