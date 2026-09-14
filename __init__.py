@@ -152,6 +152,8 @@ from .nodes.node_music_prompt import NODE_CLASS_MAPPINGS as _MAPS_MUSIC_PROMPT
 from .nodes.node_music_prompt import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_MUSIC_PROMPT
 from .nodes.node_load_3d import NODE_CLASS_MAPPINGS as _MAPS_LOAD_3D
 from .nodes.node_load_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_3D
+from .nodes.node_mesh_repair import NODE_CLASS_MAPPINGS as _MAPS_MESH_REPAIR
+from .nodes.node_mesh_repair import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_MESH_REPAIR
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -237,6 +239,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_DURATION,
     **_MAPS_LOAD_AUDIO,
     **_MAPS_LOAD_3D,
+    **_MAPS_MESH_REPAIR,
     **_MAPS_H3_SYNC,
     **_MAPS_VIDEO_PROMPT,
     **_MAPS_AI_PROMPT,
@@ -318,6 +321,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_DURATION,
     **_NAMES_LOAD_AUDIO,
     **_NAMES_LOAD_3D,
+    **_NAMES_MESH_REPAIR,
     **_NAMES_H3_SYNC,
     **_NAMES_VIDEO_PROMPT,
     **_NAMES_AI_PROMPT,

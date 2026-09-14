@@ -38,6 +38,7 @@ export const KEYWORDS = {
   PixaromaPreview: "view result thumbnail show display civitai metadata parameters resources share",
   PixaromaSaveImage: "export write disk output filename png jpg jpeg webp lossless quality compression file size smaller folder subfolders tree mirror civitai metadata parameters resources share lora hash embed settings gear hide buttons",
   PixaromaCompare: "before after slider difference ab side by side",
+  PixaromaMeshRepair: "3d print printing printable slicer stl 3mf watertight manifold non-manifold solid hollow shell double skin inner shell holes fix repair clean mesh cleanup make solid close holes floaters loose bits broken edges flipped normals pixal3d trellis hunyuan remesh voxel meshmixer make solid blender 3d print toolbox save export stl file glb print size millimetres mm bambu prusa cura orca",
   PixaromaRemoveBackground: "cutout transparent alpha matte birefnet rembg erase background",
   PixaromaLoadVideo: "mp4 movie frames clip import video",
   PixaromaLoadVideoFrame: "still grab frame single picture screenshot",
