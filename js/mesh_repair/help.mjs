@@ -99,8 +99,10 @@ export const MESH_REPAIR_HELP = {
       heading: "Good to know",
       bullets: [
         "The rebuild runs on the processor, so it does not need graphics memory.",
-        "On a fast desktop processor the Ep34 radio (700,000 triangles) took about 23 seconds at "
+        "On a fast desktop processor the Ep34 radio (700,000 triangles) took about 40 seconds at "
           + "Medium, including bringing the triangles back down.",
+        "Very thin rims and grooves, about as wide as the detail size, come out slightly soft or "
+          + "jagged at Medium. High or Max keeps them crisper.",
         "An STL file has no colours. Save the mesh output as well if you want them.",
         "Parts thinner than the detail size can disappear, and slots narrower than the seal close up.",
         "Reading a model file needs a recent ComfyUI that has the Get 3D Components node.",

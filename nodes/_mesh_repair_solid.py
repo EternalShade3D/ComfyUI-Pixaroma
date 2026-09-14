@@ -12,9 +12,10 @@ skin full of pinholes. Patching the surface cannot fill a hollow model, so:
   3. drop solid islands smaller than a share of the biggest
   4. smooth the occupancy slightly and extract its surface with marching
      TETRAHEDRA, which is closed and manifold by construction
-  5. snap each new point ALONG ITS OWN NORMAL onto the original surface and undo
-     any triangle that would fold - snapping straight to the closest point
-     collapsed neighbours into broken edges in the research test
+  5. put that surface back ON the original: smooth the voxel stairs away, move
+     each point along its smooth normal to where the original is, trust only
+     the points that land and agree with their neighbours, and fill every other
+     point in from them (snap_to_surface says why each simpler way failed)
   6. copy colours from the nearest point of the original
 
 Pure numpy + scipy: no torch, no ComfyUI, nothing a user's install may lack.
@@ -26,7 +27,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import scipy.ndimage as ndi
+from scipy.sparse import coo_matrix
 from scipy.spatial import cKDTree
+
+from ._mesh_repair_census import weld_ids
 
 PAD = 3                  # empty cells kept around the model, beyond the seal
 SEAL_MAX_PERCENT = 5.0   # Auto never seals wider than this share of the longest side
@@ -35,8 +39,14 @@ JUMP = 1.5               # a fill this much bigger than the previous one = the i
 SETTLED = 1.3            # at the working grid, one more cell must add less than this
 SIGMA = 0.6              # Gaussian smoothing of the occupancy, in cells
 ISO = 0.5
-SNAP_MAX = 1.5           # cells a point may move onto the original surface
 T_CLAMP = 0.02           # keeps interpolated points off the grid corners
+# Putting the surface back on the original (snap_to_surface), distances in grid cells:
+SNAP_MAX = 2.0           # how far a point may move
+SMOOTH_ITERS = 24        # Taubin passes that take the voxel stairs out first
+SNAP_STEPS = 3           # steps along the smooth normal toward the original
+LANDED = 0.1             # a point this close to the original is on it
+AGREE = 0.4              # a landed point this far from its landed neighbours landed wrongly
+FILL_ITERS = 60          # sweeps that fill the untrusted points in
 
 
 # ── the grid ─────────────────────────────────────────────────────────────────
@@ -325,9 +335,14 @@ def closest_point_tri(p, a, b, c):
     return res
 
 
-def closest_points(Q, V, F, k=8, chunk=8192, check_cancel=None):
+def closest_points(Q, V, F, k=8, chunk=8192, check_cancel=None, facing=None):
     """Closest point on the mesh for each query, searched among the k triangles
     with the nearest centres. Returns (points, triangle index, distance).
+
+    `facing`, one normal per query, skips triangles that face the other way - the
+    inner skin of a double skin faces inward, so an outward normal never lands
+    on it. A query left with no candidate keeps its own position, triangle -1
+    and distance inf.
 
     The chunks run on threads. numpy and the tree search release the GIL and
     every chunk writes only its own slice, so the answer is the same point for
@@ -340,6 +355,10 @@ def closest_points(Q, V, F, k=8, chunk=8192, check_cancel=None):
     k = int(max(1, min(k, len(F))))
     A, B, C = V[F[:, 0]], V[F[:, 1]], V[F[:, 2]]
     tree = cKDTree((A + B + C) / 3.0, balanced_tree=False, compact_nodes=False)
+    tri_n = None
+    if facing is not None:
+        facing = np.asarray(facing, np.float64)
+        tri_n = np.cross(B - A, C - A)
     n = len(Q)
     points = np.empty((n, 3))
     tri_index = np.empty(n, np.int64)
@@ -351,11 +370,15 @@ def closest_points(Q, V, F, k=8, chunk=8192, check_cancel=None):
         ti = np.asarray(ti).reshape(len(q), k)
         cp = closest_point_tri(q[:, None, :], A[ti], B[ti], C[ti])
         d2 = ((cp - q[:, None, :]) ** 2).sum(-1)
+        if tri_n is not None:
+            d2 = np.where((tri_n[ti] * facing[s:s + len(q)][:, None, :]).sum(-1) > 0.0, d2, np.inf)
         j = d2.argmin(1)
         rows = np.arange(len(q))
-        points[s:s + len(q)] = cp[rows, j]
-        tri_index[s:s + len(q)] = ti[rows, j]
-        dist[s:s + len(q)] = np.sqrt(d2[rows, j])
+        best = d2[rows, j]
+        found = np.isfinite(best)
+        points[s:s + len(q)] = np.where(found[:, None], cp[rows, j], q)
+        tri_index[s:s + len(q)] = np.where(found, ti[rows, j], -1)
+        dist[s:s + len(q)] = np.sqrt(best)
 
     starts = range(0, n, chunk)
     workers = max(1, min(32, os.cpu_count() or 1, len(starts)))
@@ -404,21 +427,117 @@ def revert_folds(new, old, faces, iters=4):
     return new, left
 
 
-def snap_to_surface(verts, faces, V, F, max_move, check_cancel=None):
-    """Move each point along its own normal toward the original surface.
+def mesh_adjacency(nv, faces):
+    """Each point's neighbours along the triangle edges as a 0/1 sparse matrix,
+    and how many neighbours each point has."""
+    f = np.asarray(faces, np.int64)
+    i = np.concatenate([f[:, 0], f[:, 1], f[:, 2], f[:, 1], f[:, 2], f[:, 0]])
+    j = np.concatenate([f[:, 1], f[:, 2], f[:, 0], f[:, 0], f[:, 1], f[:, 2]])
+    A = coo_matrix((np.ones(len(i), np.float32), (i, j)), shape=(nv, nv)).tocsr()
+    A.data[:] = 1.0
+    return A, np.maximum(np.asarray(A.sum(1)).ravel(), 1.0)
 
-    Along the normal only: the sideways part of the move is dropped, so two
-    neighbouring points can never be pulled onto the same spot. A point further
-    than max_move from the original stays where it is (it sits on a sealed gap).
+
+def taubin_smooth(X, A, deg, iters, lam=0.5, mu=-0.53, check_cancel=None):
+    """Smooth without shrinking: each pass pulls every point toward its
+    neighbours' average, then pushes it slightly back out."""
+    X = np.asarray(X, np.float64)
+    for it in range(iters):
+        if check_cancel and it % 8 == 0:
+            check_cancel()
+        X = X + lam * ((A @ X) / deg[:, None] - X)
+        X = X + mu * ((A @ X) / deg[:, None] - X)
+    return X
+
+
+def harmonic_fill(values, trusted, A, deg, iters=FILL_ITERS):
+    """Keep the trusted values; give every other point the average of its
+    neighbours, repeated until it settles, so it blends in with the trusted
+    points around it. A patch with no trusted neighbour stays at 0."""
+    out = np.where(trusted, values, 0.0)
+    loose = np.nonzero(~trusted)[0]
+    if len(loose) == 0:
+        return out
+    rows = A[loose]
+    fixed = rows @ out
+    links = rows[:, loose]
+    d = deg[loose]
+    x = np.zeros(len(loose))
+    for _ in range(iters):
+        x = (fixed + links @ x) / d
+    out[loose] = x
+    return out
+
+
+def _bad_faces(pos, faces, normals, h, merged=False):
+    """Triangles turned over against the smooth normals (slivers too small to see
+    are ignored) and, when asked, triangles squashed onto a neighbour by position."""
+    fn = face_normals(pos, faces)
+    bad = (np.linalg.norm(fn, axis=1) > 1e-3 * h * h) & ((fn * normals[faces].sum(1)).sum(1) < 0.0)
+    if merged:
+        wid, _ = weld_ids(pos)
+        W = wid[faces]
+        bad |= (W[:, 0] == W[:, 1]) | (W[:, 1] == W[:, 2]) | (W[:, 0] == W[:, 2])
+    return bad
+
+
+def snap_to_surface(verts, faces, V, F, h, check_cancel=None):
+    """Put the voxel surface back ON the original. Returns (points, faces still bad).
+
+    Three simpler ways each failed a Blender render of the Ep34 radio (2026-09-14):
+    moving each point along the voxel surface's OWN normal left stair ripples
+    everywhere, because those normals follow the grid; straight closest-point
+    projection slid points onto crease lines, which left saw-teeth and points
+    sitting on top of each other (no longer watertight once merged); and moving
+    along SMOOTH normals alone left the ~6% of points that never reach the
+    surface sticking out as specks. So:
+
+      1. Taubin-smooth the stairs away - the base
+      2. step each point along the base's normal toward the closest original
+         triangle facing the same way (never the inner skin)
+      3. trust a point only if it landed and agrees with its landed neighbours;
+         every other point is filled in from the trusted ones (harmonic_fill)
+      4. a point that still turns a triangle over goes back to the base
     """
-    normals = vertex_normals(verts, faces)
-    points, tri_index, dist = closest_points(verts, V, F, check_cancel=check_cancel)
-    along = np.clip(((points - verts) * normals).sum(1), -max_move, max_move)
-    ok = dist <= max_move
-    new = verts.copy()
-    new[ok] += normals[ok] * along[ok, None]
-    new, folds = revert_folds(new, verts, faces)
-    return new, points, tri_index, folds
+    verts = np.asarray(verts, np.float64)
+    max_move = SNAP_MAX * h
+    A, deg = mesh_adjacency(len(verts), faces)
+    base = taubin_smooth(verts, A, deg, SMOOTH_ITERS, check_cancel=check_cancel)
+    normals = vertex_normals(base, faces)
+    offset = np.zeros(len(base))
+    pos = base
+    for _ in range(SNAP_STEPS):
+        pts, _, dist = closest_points(pos, V, F, check_cancel=check_cancel, facing=normals)
+        step = np.where(dist <= max_move, ((pts - pos) * normals).sum(1), 0.0)
+        offset = np.clip(offset + step, -max_move, max_move)
+        pos = base + normals * offset[:, None]
+    _, _, dist = closest_points(pos, V, F, check_cancel=check_cancel, facing=normals)
+    trusted = (dist <= LANDED * h) & (np.abs(offset) < max_move * 0.999)
+
+    for _ in range(4):
+        if check_cancel:
+            check_cancel()
+        weight = trusted.astype(np.float64)
+        count = A @ weight
+        mean = (A @ (offset * weight)) / np.maximum(count, 1.0)
+        wrong = trusted & (count >= 2) & (np.abs(offset - mean) > AGREE * h)
+        trusted &= ~wrong
+        filled = harmonic_fill(offset, trusted, A, deg)
+        flipped = _bad_faces(base + normals * filled[:, None], faces, normals, h)
+        if not wrong.any() and not flipped.any():
+            break
+        trusted[np.unique(faces[flipped].reshape(-1))] = False
+
+    pos = base + normals * harmonic_fill(offset, trusted, A, deg)[:, None]
+    left = 0
+    for _ in range(4):
+        bad = _bad_faces(pos, faces, normals, h, merged=True)
+        left = int(bad.sum())
+        if not left:
+            break
+        idx = np.unique(faces[bad].reshape(-1))
+        pos[idx] = base[idx]
+    return pos, left
 
 
 def barycentric(P, a, b, c):
@@ -533,16 +652,20 @@ def solid_rebuild(V, F, detail=384, seal="auto", loose=1.0, keep_detail=True,
     verts = lo + (grid_verts + 0.5) * h
     mark("build the surface", 0.7)
 
-    points = tri_index = None
     folds = 0
     if keep_detail:
-        verts, points, tri_index, folds = snap_to_surface(verts, faces, V, F, SNAP_MAX * h, check_cancel)
+        verts, folds = snap_to_surface(verts, faces, V, F, h, check_cancel)
         mark("snap onto the original", 0.85)
+    else:
+        # No snap, but never hand back voxel stairs: the help promises a softer,
+        # smoother result, and that is the smoothed surface.
+        A, deg = mesh_adjacency(len(verts), faces)
+        verts = taubin_smooth(verts, A, deg, SMOOTH_ITERS, check_cancel=check_cancel)
+        mark("smooth the surface", 0.85)
 
     out_colours = None
     if colours is not None or (uvs is not None and texture is not None):
-        if points is None:
-            points, tri_index, _ = closest_points(verts, V, F, check_cancel=check_cancel)
+        points, tri_index, _ = closest_points(verts, V, F, check_cancel=check_cancel)
         out_colours = transfer_colours(points, tri_index, V, F, colours, uvs, texture)
         mark("copy colours", 0.95)
 
