@@ -10,14 +10,16 @@ export const LOAD_3D_HELP = {
     + "view angle camera orthographic perspective field of view clay no texture no colours grey model "
     + "shape only normal map depth map controlnet wireframe wire quads triangles polygon count mask "
     + "silhouette cut out background colour model_3d file 3d save 3d preview 3d get 3d components "
-    + "multi view reference image image to image 3d to image upload model drag and drop model",
+    + "multi view reference image image to image 3d to image upload model drag and drop model "
+    + "width height size resolution picture size sizes pixaroma empty latent latent size match size "
+    + "same size aspect ratio portrait landscape",
   sections: [
     {
       heading: "What it does",
       body:
         "Loads a 3D model and shows it live on the node. It gives you three things at once: the "
         + "model file for 3D workflows, a picture of the model for image workflows, and a mask of "
-        + "its shape.\n\n"
+        + "its shape. The picture's width and height come out as numbers too.\n\n"
         + "The bright frame on the view is exactly the picture that comes out, at the width and "
         + "height you type. The dimmed edge around it is not part of the picture, and neither is "
         + "the grid.",
@@ -66,9 +68,28 @@ export const LOAD_3D_HELP = {
           + "(perspective or orthographic, and the field of view), which way is up, a quarter "
           + "turn for a model that faces the wrong way, the grid, and the button colour."],
         ["Width and Height", "The size of the picture in pixels, from 64 to 4096. The arrows step "
-          + "by 8, and the button between them swaps the two."],
+          + "by 8, and the button between them swaps the two. When a width or height is wired in, "
+          + "its field locks and shows the number that arrives."],
         ["The line at the bottom", "The file type, its size, how many triangles it has, and "
-          + "whether it carries textures or vertex colours."],
+          + "whether it carries textures or vertex colours. It turns red to warn you when a wired "
+          + "size cannot be used."],
+      ],
+    },
+    {
+      heading: "Matching the size",
+      bullets: [
+        "Wire width and height out into your empty latent, and the image you make comes out the "
+          + "same size as the picture.",
+        "Or let Sizes Pixaroma decide: wire its width and height into this node's width and height "
+          + "inputs, and into your latent as well. The frame on the node follows whatever you pick "
+          + "in Sizes, and the picture is drawn at that size.",
+        "Only Sizes Pixaroma can be read this way, because the picture is drawn the moment you "
+          + "press Run, before anything else runs. A size that is worked out while the workflow "
+          + "runs, such as maths on numbers or the size of a photo, cannot shape the picture. The "
+          + "node warns you on its bottom line, and if the numbers do not match, the run stops "
+          + "with a message rather than making a picture of the wrong size.",
+        "A muted or bypassed Sizes node sends nothing, so the node goes back to its own Width and "
+          + "Height.",
       ],
     },
     {
@@ -78,6 +99,8 @@ export const LOAD_3D_HELP = {
           + "3D Components to edit the mesh."],
         ["image", "The picture in the frame, in the look you picked."],
         ["mask", "White where the model is, black everywhere else."],
+        ["width", "The width of the picture in pixels."],
+        ["height", "The height of the picture in pixels."],
       ],
     },
     {

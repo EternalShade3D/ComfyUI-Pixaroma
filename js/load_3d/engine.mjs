@@ -12,7 +12,10 @@
 
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { canvasBackingScale } from "../shared/nodes2.mjs";
-import { NONE, readState, splitModelName, fmtBytes, fmtInt } from "./core.mjs";
+import { NONE, splitModelName, fmtBytes, fmtInt } from "./core.mjs";
+// The size the picture is drawn at can come from a wire, so the frame, the drag
+// maths and the capture all read the EFFECTIVE state, never the stored one.
+import { effectiveState } from "./size.mjs";
 
 const VENDOR = "/pixaroma/vendor/three"; // a BARE base, wrapped at each use (hosted-urls.md #4)
 const vendor = (tail) => pixApiUrl(VENDOR + tail);
@@ -894,7 +897,7 @@ function flush() {
 /** Glide the camera from where it was to the state's new angle. */
 export function animateView(node, fromAz, fromEl) {
   const rec = recOf(node);
-  const st = readState(node);
+  const st = effectiveState(node);
   let reduce = false;
   try { reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (_e) { /* old browser */ }
   if (reduce) {
@@ -935,7 +938,7 @@ export function frameRect(cssW, cssH, st) {
 /** World units per CSS pixel at the target, for dragging the model around. */
 export function panScale(node, cssW, cssH) {
   const rec = _recs.get(node);
-  const st = readState(node);
+  const st = effectiveState(node);
   const f = frameRect(cssW, cssH, st);
   const r = rec?.view?.radius || 1;
   const A = st.w / st.h;
@@ -990,7 +993,7 @@ function drawNow(node) {
   if (cv.height !== bh) cv.height = bh;
   const ctx = cv.getContext("2d");
   if (!ctx) return;
-  const st = readState(node);
+  const st = effectiveState(node);
   const f = frameRect(cssW, cssH, st);
   const fr = { x: f.x * (bw / cssW), y: f.y * (bh / cssH), w: f.w * (bw / cssW), h: f.h * (bh / cssH) };
 
@@ -1051,7 +1054,7 @@ export async function captureModel(node, value, state = null) {
   // Draw the state the CALLER named the picture after. Reading it again here,
   // after the awaits above, stored a view changed while the model was loading
   // under the old view's file name (measured: a Left picture saved as Front).
-  const st = state || readState(node);
+  const st = state || effectiveState(node);
   const limit = Math.min(r.capabilities?.maxTextureSize || 4096, 16384);
   let w = st.w;
   let h = st.h;

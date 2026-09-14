@@ -14,7 +14,7 @@ import { registerNodeHelp } from "../shared/help.mjs";
 import { installNodeAccent, registerNodeSettings, repaintAccent } from "../shared/node_settings.mjs";
 import { installRefreshHook, onNodeDefsRefresh } from "../shared/refresh.mjs";
 import {
-  CLASS, HIDDEN_INPUT, MODEL_WIDGET, UI_WIDGET, NONE, CAPTURE_SUBFOLDER, readState, renderKey,
+  CLASS, HIDDEN_INPUT, MODEL_WIDGET, UI_WIDGET, NONE, CAPTURE_SUBFOLDER, renderKey,
 } from "./core.mjs";
 import {
   buildFace, renderFace, placeBand, destroyFace, hideModelWidget, modelWidget, flash, VP_MIN,
@@ -25,6 +25,9 @@ import {
 } from "./engine.mjs";
 import { openLoad3DPanel, closeLoad3DPanelFor, isLoad3DPanelOpenFor } from "./settings.mjs";
 import { LOAD_3D_HELP } from "./help.mjs";
+import {
+  SIZE_INPUTS, placeSizeInputs, sizeSources, sizeSignature, effectiveState,
+} from "./size.mjs";
 
 // CONSTANTS, never live measurements: getMinHeight drives node.size, and a
 // measured value comes back a pixel or two different between save and reload,
@@ -35,7 +38,13 @@ const WIDGET_MIN_H = 28 + 24 + 24 + 26 + 22 + 5 * 6 + 10 + VP_MIN;
 const MIN_W = 330;
 const MIN_H = 400;
 const DEFAULT_W = 360;
-const DEFAULT_H = 580;
+// 40 more than before the width and height outputs: their two slot rows push the
+// body down, so a fresh node keeps the view it always had.
+const DEFAULT_H = 620;
+
+function slotHeight() {
+  return window.LiteGraph?.NODE_SLOT_HEIGHT || 20;
+}
 
 registerNodeHelp(CLASS, LOAD_3D_HELP);
 
@@ -99,6 +108,13 @@ function watchModels() {
         setModel(n, want);
         renderFace(n);
       }
+      // A wired size follows its source: pick another size in Sizes Pixaroma and
+      // the frame and the fields change with it, with nothing clicked on this node.
+      const sig = sizeSignature(sizeSources(n));
+      if (n._pixL3dSizeSig !== sig) {
+        n._pixL3dSizeSig = sig;
+        renderFace(n);
+      }
     }
   }, 500);
 }
@@ -144,8 +160,10 @@ app.registerExtension({
         node._pixL3dRo = new ResizeObserver(() => requestDraw(node));
         node._pixL3dRo.observe(node._pixL3dEls.vp);
       } catch (_e) { /* no ResizeObserver: redraws still come from every change */ }
+      placeSizeInputs(node, slotHeight());
       placeBand(node);
       node._pixL3dRendererOff = onRendererChange(() => {
+        placeSizeInputs(node, slotHeight());
         placeBand(node);
         requestDraw(node);
       });
@@ -167,9 +185,12 @@ app.registerExtension({
     const _configure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
       const r = _configure?.apply(this, arguments);
-      // DOM and the engine only. Nothing here writes node.properties, node.size
-      // or slots, so an untouched workflow never opens "modified" (Vue Compat #18).
+      // DOM and the engine only. Nothing here writes node.properties or node.size,
+      // and the one slot field it sets (the size inputs' pos) is stripped from
+      // every save, so an untouched workflow never opens "modified" (Vue Compat #18).
       hideModelWidget(this);
+      // configure() rebuilt the inputs from the saved workflow, which carries no pos.
+      placeSizeInputs(this, slotHeight());
       // Only a node that is IN a graph loads its model. Copy, clone and Convert
       // to Subgraph configure a throwaway copy that is never added, and loading
       // for it downloaded and parsed the whole model for nothing (measured: a
@@ -182,6 +203,31 @@ app.registerExtension({
         renderFace(this);
       });
       watchModels();
+      return r;
+    };
+
+    // The size inputs' pos is layout, rebuilt on every load, so it never goes
+    // into a saved workflow. LGraphNode.serialize copies each slot
+    // (inputAsSerialisable), so deleting it here cannot touch the live input.
+    const _serialize = nodeType.prototype.serialize;
+    nodeType.prototype.serialize = function () {
+      const data = _serialize.apply(this, arguments);
+      try {
+        for (const inp of data?.inputs || []) {
+          if (inp && SIZE_INPUTS.includes(inp.name)) delete inp.pos;
+        }
+      } catch (_e) { /* a save must never fail over layout */ }
+      return data;
+    };
+
+    // Plugging a wire into width or height, or pulling one out, changes the frame
+    // and the fields at once (the 500 ms poll would catch it a moment later). DOM
+    // only, so it is safe during the connection replay of a workflow load.
+    const _connections = nodeType.prototype.onConnectionsChange;
+    nodeType.prototype.onConnectionsChange = function () {
+      const r = _connections?.apply(this, arguments);
+      const node = this;
+      if (node._pixL3dEls) queueMicrotask(() => renderFace(node));
       return r;
     };
 
@@ -280,22 +326,27 @@ async function uploadPicture(blob, filename) {
   return `${data?.subfolder || CAPTURE_SUBFOLDER}/${data?.name || filename} [temp]`;
 }
 
-// Only the picture's two names are sent. Python never reads the size (the names
-// already carry it), and sending it anyway re-ran a model-only graph, and
-// everything after it, whenever Width or Height was touched.
+// Only what something downstream reads is sent, so nothing else can change this
+// node's cache key: the picture's two names when image or mask is wired, the
+// width and height when either of those outputs is wired. Sending the size with
+// nothing reading it re-ran a model-only graph, and everything after it,
+// whenever Width or Height was touched.
 async function pictureState(node, model) {
   if (!node) return {};
-  // Nothing reads the picture: skip the draw and the upload entirely.
-  if (!(outputLinked(node, 1) || outputLinked(node, 2))) return {};
-  if (!model || model === NONE) return {};
-  // Read ONCE: this same state names the files and is what gets drawn.
-  const st = readState(node);
+  const wantPicture = outputLinked(node, 1) || outputLinked(node, 2);
+  const wantSize = outputLinked(node, 3) || outputLinked(node, 4);
+  if (!wantPicture && !wantSize) return {};
+  // Read ONCE: this same state names the files, is what gets drawn, and is the
+  // size sent. It is the EFFECTIVE state, so a size wired in from Sizes counts.
+  const st = effectiveState(node);
+  const size = wantSize ? { w: st.w, h: st.h } : {};
+  if (!wantPicture || !model || model === NONE) return size;
   try {
     // A file replaced on disk under the same name must not reuse its old picture.
     await refreshIfReplaced(node, model);
     const key = renderKey(`${model}#${modelVersion(model)}`, st);
     const hit = _uploaded.get(key);
-    if (hit) return { ...hit };
+    if (hit) return { ...hit, ...size };
     const shot = await captureModel(node, model, st);
     const base = `l3d_${key}`;
     const names = {
@@ -304,11 +355,11 @@ async function pictureState(node, model) {
     };
     _uploaded.set(key, names);
     while (_uploaded.size > 64) _uploaded.delete(_uploaded.keys().next().value);
-    return { ...names };
+    return { ...names, ...size };
   } catch (e) {
     console.warn("[Pixaroma.Load3D] the picture could not be made", e);
     flash(node, `The picture could not be made: ${e?.message || e}`, true, 8000);
-    return {};
+    return size;
   }
 }
 

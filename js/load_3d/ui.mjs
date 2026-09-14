@@ -19,18 +19,23 @@ import {
 import {
   attachCanvas, setModel, statusOf, requestDraw, animateView, infoText, invalidateModel, panScale,
 } from "./engine.mjs";
+import { sizeSources, sizeNote, isLocked } from "./size.mjs";
 
 const ROOT = "pix-l3d-root";
 export const VP_MIN = 140;
 
-// The Upload + gear band floats up beside the three output dots, so the node
-// spends no extra row on them (CLAUDE.md node UI convention #39). The offset is
-// PER RENDERER and measured against the dots, not the node frame - read live,
+// The Upload + gear band floats up beside the model_3d, image and mask dots, so
+// the node spends no extra row on it (CLAUDE.md node UI convention #39). The
+// offset is PER RENDERER and was measured against the dots, not the node frame,
+// with those three outputs only: each slot row after them (width, height) moves
+// the body down one pitch, so the band climbs back by the same amount. Read live,
 // because the renderer can flip under a live node.
 const BAND_TOP = -59;
 const BAND_TOP_VUE = -51;
+const BAND_ROWS_MEASURED = 3;
+const SLOT_PITCH = 20;
 const BAND_LEFT = 8;
-const BAND_RSV_R = 92; // keep clear of the model_3d / image / mask labels
+const BAND_RSV_R = 92; // keep clear of the output labels
 
 const ICON_UPLOAD = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 3l4.2 4.2h-3.2V13h-2V7.2H7.8L12 3z" fill="currentColor"/><path d="M5 14.5V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 const ICON_GEAR = '<svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19.4 13a7.8 7.8 0 0 0 .05-1 7.8 7.8 0 0 0-.05-1l2-1.55a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36 1a7 7 0 0 0-1.72-1l-.36-2.5a.5.5 0 0 0-.5-.42h-3.8a.5.5 0 0 0-.5.42l-.36 2.5a7 7 0 0 0-1.72 1l-2.36-1a.5.5 0 0 0-.6.22L2.48 8.2a.5.5 0 0 0 .12.62L4.6 11a7.8 7.8 0 0 0 0 2l-2 1.56a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-1a7 7 0 0 0 1.72 1l.36 2.5a.5.5 0 0 0 .5.42h3.8a.5.5 0 0 0 .5-.42l.36-2.5a7 7 0 0 0 1.72-1l2.36 1a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62L19.4 13zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>';
@@ -89,6 +94,12 @@ export function injectCSS() {
 .${ROOT} .pix-l3d-spin b:hover{filter:brightness(1.4);}
 .${ROOT} .pix-l3d-swap{flex:0 0 auto;width:28px;box-sizing:border-box;margin:0;padding:0;background:#1d1d1d;border:1px solid #444;border-radius:4px;color:#ccc;font:13px ${F};cursor:pointer;}
 .${ROOT} .pix-l3d-swap:hover{border-color:${ACC};color:#fff;}
+.${ROOT} .pix-l3d-swap:disabled,.${ROOT} .pix-l3d-swap:disabled:hover{opacity:.35;cursor:default;border-color:#444;color:#ccc;}
+.${ROOT} .pix-l3d-num.wired{cursor:default;opacity:.55;filter:grayscale(.9);}
+.${ROOT} .pix-l3d-num.wired:focus-within{border-color:#444;}
+.${ROOT} .pix-l3d-num.wired input,.${ROOT} .pix-l3d-num.wired .pix-l3d-spin{pointer-events:none;}
+/* Nodes 2.0 lays the input dots out itself: move width and height down three slot rows, beside their outputs */
+.lg-node:has(.${ROOT}) .lg-slot--input:first-child{margin-top:${BAND_ROWS_MEASURED * SLOT_PITCH}px !important;}
 .${ROOT} .pix-l3d-info{flex:0 0 auto;height:22px;box-sizing:border-box;display:flex;align-items:center;background:rgba(0,0,0,.25);border-radius:4px;padding:0 8px;font-size:11px;color:#aaa;white-space:nowrap;overflow:hidden;}
 .${ROOT} .pix-l3d-info span{overflow:hidden;text-overflow:ellipsis;}
 .${ROOT} .pix-l3d-info.bad{color:#e8826f;}
@@ -236,7 +247,7 @@ function numField(label, tip) {
   const dnB = el("b", null, "▼");
   spin.append(upB, dnB);
   wrap.append(el("span", "lb", label), input, spin);
-  return { wrap, input, upB, dnB };
+  return { wrap, input, upB, dnB, tip, label };
 }
 
 export function destroyFace(node) {
@@ -246,13 +257,43 @@ export function destroyFace(node) {
   node._pixL3dEls = null;
 }
 
-/** Float the band beside the output dots. DOM style only, so it can never dirty a workflow. */
+/** Float the band beside the model_3d, image and mask dots. DOM style only, so it can never dirty a workflow. */
 export function placeBand(node) {
   const band = node?._pixL3dEls?.band;
   if (!band) return;
-  band.style.top = (isVueNodes() ? BAND_TOP_VUE : BAND_TOP) + "px";
+  const rows = Math.max(BAND_ROWS_MEASURED, Array.isArray(node.outputs) ? node.outputs.length : 0);
+  const top = (isVueNodes() ? BAND_TOP_VUE : BAND_TOP) - (rows - BAND_ROWS_MEASURED) * SLOT_PITCH;
+  band.style.top = top + "px";
   band.style.left = BAND_LEFT + "px";
   band.style.right = BAND_RSV_R + "px";
+}
+
+// Width and Height: the node's own numbers, or locked to what a wire delivers.
+function renderSizeFields(node, els, st, sources) {
+  for (const [key, f] of [["w", els.w], ["h", els.h]]) {
+    const src = sources[key];
+    const locked = isLocked(src);
+    const word = f.label.toLowerCase();
+    f.wrap.classList.toggle("wired", locked);
+    f.input.readOnly = locked;
+    f.input.tabIndex = locked ? -1 : 0;
+    if (!locked) {
+      if (document.activeElement !== f.input) f.input.value = String(st[key]);
+      f.wrap.title = f.tip;
+      continue;
+    }
+    if (document.activeElement === f.input) f.input.blur();
+    if (src.state === "value") {
+      f.input.value = String(src.value);
+      f.wrap.title = `${f.label} comes from "${src.title}". Unplug the wire to type a ${word} here.`;
+    } else {
+      const from = src.title ? `"${src.title}"` : "a node";
+      f.input.value = "?";
+      f.wrap.title = `${f.label} is wired in from ${from}, whose number only exists once the workflow `
+        + `runs, so the picture cannot follow it. Wire Sizes Pixaroma, or unplug the wire to type a ${word} here.`;
+    }
+  }
+  els.swap.disabled = isLocked(sources.w) || isLocked(sources.h);
 }
 
 export function renderFace(node) {
@@ -274,8 +315,8 @@ export function renderFace(node) {
 
   for (const [k, b] of Object.entries(els.viewBtns)) b.classList.toggle("on", st.view === k);
   for (const [k, b] of Object.entries(els.lookBtns)) b.classList.toggle("on", st.look === k);
-  if (document.activeElement !== els.w.input) els.w.input.value = String(st.w);
-  if (document.activeElement !== els.h.input) els.h.input.value = String(st.h);
+  const sources = sizeSources(node);
+  renderSizeFields(node, els, st, sources);
 
   const s = statusOf(node);
   let msg = "";
@@ -295,6 +336,13 @@ export function renderFace(node) {
     line = "Loading ...";
   } else {
     line = infoText(s.info);
+  }
+  // A wired size that cannot be used outranks the file line, but not a file that
+  // failed to open.
+  const note = sizeNote(sources);
+  if (note && !bad) {
+    line = note;
+    bad = true;
   }
   if (node._pixL3dFlash) {
     line = node._pixL3dFlash;
@@ -513,7 +561,15 @@ function canvasZoom() {
   return Number.isFinite(s) && s > 0 ? s : 1;
 }
 
+// A side locked to a wire keeps the node's own number untouched: the arrows, the
+// keyboard and a change event that arrives late all stop here. (The swap button
+// needs no check: it is disabled while either side is locked.)
+function sideLocked(node, key) {
+  return isLocked(sizeSources(node)[key]);
+}
+
 function stepSide(node, key, delta, input) {
+  if (sideLocked(node, key)) return;
   const st = readState(node);
   writeState(node, { [key]: Math.min(MAX_SIDE, Math.max(MIN_SIDE, st[key] + delta)) });
   // renderFace leaves a FOCUSED field alone (so typing is never overwritten),
@@ -523,6 +579,10 @@ function stepSide(node, key, delta, input) {
 }
 
 function commitSide(node, key, input) {
+  if (sideLocked(node, key)) {
+    renderFace(node);
+    return;
+  }
   const st = readState(node);
   const n = parseInt(String(input.value).replace(/[^0-9]/g, ""), 10);
   const v = Number.isFinite(n) ? Math.min(MAX_SIDE, Math.max(MIN_SIDE, n)) : st[key];

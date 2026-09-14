@@ -10,11 +10,18 @@ input. ComfyUI's own Load 3D works the same way. A run started without a browser
 therefore has no picture; the node says so rather than inventing one, unless
 nothing downstream reads the picture at all.
 
+The picture's width and height also come out as numbers, and can be wired IN.
+The browser reads a wired size before Run when it can (Sizes Pixaroma, see
+js/load_3d/size.mjs) and draws the picture at it. A wired size that still
+disagrees with the picture stops the run, because the only way that happens is a
+size the browser could not know in time, and a picture of the wrong size would
+otherwise flow on silently.
+
 The model itself comes straight from disk as a File3D, the type ComfyUI's 3D
 nodes pass around (Save 3D, Preview 3D, Get 3D Components).
 
-Pure helpers + harness: _load3d_helpers.py, D:\\Claude Tests\\_load3d_test.py
-and _load3d_api_test.py (headless, run with the embedded python).
+Pure helpers + harnesses: _load3d_helpers.py, D:\\Claude Tests\\_load3d_test.py,
+_load3d_size_test.py, and _load3d_api_test.py (headless, run with the embedded python).
 """
 from __future__ import annotations
 
@@ -27,8 +34,8 @@ from PIL import Image
 import folder_paths
 
 from ._load3d_helpers import (
-    CAPTURE_SUBFOLDER, NONE, is_model_name, list_models, outputs_consumed,
-    parse_state, strip_annotation,
+    CAPTURE_SUBFOLDER, NONE, is_model_name, list_models, output_size, outputs_consumed,
+    parse_state, size_mismatch_message, strip_annotation, unknown_size_read, wired_side,
 )
 from ._path_guard import is_path_under, rel_is_rooted
 
@@ -40,6 +47,12 @@ NO_PICTURE = (
     "in your browser at the moment you press Run, so run the workflow from the "
     "ComfyUI page. If you did, check the node shows your model (it may still have "
     "been loading, or the file could not be opened) and run it again."
+)
+
+NO_SIZE = (
+    "[Pixaroma] Load 3D: the width and height were not sent. The node sends them from "
+    "your browser at the moment you press Run, so run the workflow from the ComfyUI "
+    "page, or wire width and height in."
 )
 
 
@@ -140,9 +153,12 @@ class PixaromaLoad3D:
         "comes out, at the width and height you set, in the look you pick: Color shows the "
         "model's own colours and textures, Clay shows only the shape in plain grey, and Normal "
         "and Depth give pictures ready for ControlNet. The mask output is white where the model "
-        "is. Opens GLB, GLTF, OBJ, FBX, STL and PLY files from ComfyUI's input/3d and output/3d "
-        "folders, so a model a 3D workflow just saved is already in the list. The picture is "
-        "drawn in your browser when you press Run, so run the workflow from the ComfyUI page."
+        "is. The picture's width and height also come out as numbers, so an empty latent can be "
+        "the same size, and they can be wired in from Sizes Pixaroma, which then sets the "
+        "picture and the frame on the node together. Opens GLB, GLTF, OBJ, FBX, STL and PLY "
+        "files from ComfyUI's input/3d and output/3d folders, so a model a 3D workflow just saved "
+        "is already in the list. The picture is drawn in your browser when you press Run, so run "
+        "the workflow from the ComfyUI page."
     )
 
     @classmethod
@@ -156,6 +172,24 @@ class PixaromaLoad3D:
                                "the Upload button on the node adds new ones.",
                 }),
             },
+            # Optional and socket-only. A new input on a released node must never be
+            # required, or every API prompt saved before it existed stops validating.
+            "optional": {
+                "width": ("INT", {
+                    "forceInput": True,
+                    "tooltip": "Optional. Wire in the width from Sizes Pixaroma and the picture follows "
+                               "it: the Width field locks, the frame on the node takes the new shape, "
+                               "and the picture is drawn that wide. Only Sizes Pixaroma can be read "
+                               "before Run.",
+                }),
+                "height": ("INT", {
+                    "forceInput": True,
+                    "tooltip": "Optional. Wire in the height from Sizes Pixaroma and the picture follows "
+                               "it: the Height field locks, the frame on the node takes the new shape, "
+                               "and the picture is drawn that tall. Only Sizes Pixaroma can be read "
+                               "before Run.",
+                }),
+            },
             # Hidden, not required: a required STRING shows as a widget AND a
             # convertible input dot in the Vue frontend (Vue Compat #9).
             "hidden": {
@@ -165,14 +199,17 @@ class PixaromaLoad3D:
             },
         }
 
-    RETURN_TYPES = ("FILE_3D", "IMAGE", "MASK")
-    RETURN_NAMES = ("model_3d", "image", "mask")
+    RETURN_TYPES = ("FILE_3D", "IMAGE", "MASK", "INT", "INT")
+    RETURN_NAMES = ("model_3d", "image", "mask", "width", "height")
     OUTPUT_TOOLTIPS = (
         "The 3D model file itself, for 3D workflows: Save 3D, Preview 3D (Advanced), or Get 3D "
         "Components to edit the mesh.",
         "A picture of the model exactly as the frame on the node shows it, at the width and "
         "height you set, in the look you picked.",
         "White where the model is and black everywhere else, the same size as the image.",
+        "The width of the picture in pixels. Wire it into an empty latent so the image you make "
+        "is the same size as the picture.",
+        "The height of the picture in pixels. Wire it into an empty latent together with width.",
     )
     FUNCTION = "load"
     CATEGORY = "👑 Pixaroma/🖼️ Image"
@@ -208,7 +245,7 @@ class PixaromaLoad3D:
             return ""
         return "{}:{}".format(s.st_mtime_ns, s.st_size)
 
-    def load(self, model_file, prompt=None, unique_id=None, **kwargs):
+    def load(self, model_file, width=None, height=None, prompt=None, unique_id=None, **kwargs):
         path = _resolve_model(model_file)
         if not path:
             raise ValueError(
@@ -217,26 +254,46 @@ class PixaromaLoad3D:
                    if model_file and model_file != NONE else "")
                 + ". Pick one on the node, or use its Upload button."
             )
+        wired = (wired_side(width, "width"), wired_side(height, "height"))
         st = parse_state(kwargs.get(HIDDEN_INPUT))
         image_path = _resolve_capture(st["image"])
         mask_path = _resolve_capture(st["mask"])
         if image_path and mask_path:
             image = _load_image(image_path)
-            mask = _load_mask(mask_path, (int(image.shape[2]), int(image.shape[1])))
-            return (_file3d(path), image, mask)
+            size = (int(image.shape[2]), int(image.shape[1]))
+            # The browser drew the picture at the wired size whenever it could read
+            # it, so a disagreement is a size it could not know before Run. Stop:
+            # a picture of the wrong size would flow on silently.
+            problem = size_mismatch_message(size, wired)
+            if problem:
+                raise ValueError(problem)
+            mask = _load_mask(mask_path, size)
+            return (_file3d(path), image, mask, size[0], size[1])
         if outputs_consumed(prompt, unique_id, (1, 2)):
             raise ValueError(NO_PICTURE)
-        # Only model_3d is wired. This result is CACHED, and a later run that DOES
-        # wire the image, still with no picture, has identical inputs, so it is
-        # handed this result without load() running again. A blank image would
-        # then flow on silently; a blocker stops whoever reads it, with the same
-        # message (measured by _load3d_api_test.py, test B).
+        # Only model_3d (and perhaps the size) is wired. This result is CACHED, and
+        # a later run that DOES wire the image, still with no picture, has identical
+        # inputs, so it is handed this result without load() running again. A blank
+        # image would then flow on silently; a blocker stops whoever reads it, with
+        # the same message (measured by _load3d_api_test.py, test B).
         blocker = _blocked(NO_PICTURE)
         if blocker is not None:
-            return (_file3d(path), blocker, blocker)
-        return (_file3d(path),
-                torch.zeros((1, 64, 64, 3), dtype=torch.float32),
-                torch.zeros((1, 64, 64), dtype=torch.float32))
+            image, mask = blocker, blocker
+        else:
+            image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+            mask = torch.zeros((1, 64, 64), dtype=torch.float32)
+        w, h = output_size(wired, st)
+        if w is None or h is None:
+            # Only a side nobody knows AND something reads is an error: a width wired
+            # in still comes out when the height is unknown and unused.
+            if unknown_size_read((w, h), prompt, unique_id):
+                raise ValueError(NO_SIZE)
+            # The unknown side is not read; the same cached-blocker reasoning applies.
+            size_blocker = _blocked(NO_SIZE)
+            stand_in = size_blocker if size_blocker is not None else 0
+            w = stand_in if w is None else w
+            h = stand_in if h is None else h
+        return (_file3d(path), image, mask, w, h)
 
 
 NODE_CLASS_MAPPINGS = {CLASS: PixaromaLoad3D}

@@ -71,6 +71,9 @@ class PixaromaSizes:
     CATEGORY = "👑 Pixaroma/🔢 Values"
 
     def get_size(self, SizesState: str):
+        # js/load_3d/size.mjs mirrors this function so Load 3D can read the size in
+        # the browser before Run. Keep the two in step; the harness
+        # D:/Claude Tests/_load3d_size_parity.py runs both on the same states.
         try:
             state = json.loads(SizesState)
             # JS keeps state.w / state.h as the final oriented + snapped values;
