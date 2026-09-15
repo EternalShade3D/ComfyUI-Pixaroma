@@ -192,14 +192,16 @@ def turn(model, fn):
 
 def fix(model, turns, center, ground):
     """The Fix row: the turns in order, then center on X and Z, then the lowest
-    point on Y = 0. Normals and tangents only turn."""
-    moved = m3.apply_fix(model.poly.vertices, turns, center, ground)
-
+    point on Y = 0. Normals and tangents only turn.
+    -> (fixed Model3D, shift): shift is the (3,) move added after the turns."""
     def spin(rows):
         return m3.apply_fix(rows, turns, False, False)
 
-    return replace(model, poly=m3.with_vertices(model.poly, moved),
-                   normals=_turn_rows(model.normals, spin), tangents=_turn_rows(model.tangents, spin))
+    turned = spin(model.poly.vertices)
+    shift = m3.fix_shift(turned, center, ground)
+    fixed = replace(model, poly=m3.with_vertices(model.poly, turned + shift),
+                    normals=_turn_rows(model.normals, spin), tangents=_turn_rows(model.tangents, spin))
+    return fixed, shift
 
 
 def to_mesh(model):

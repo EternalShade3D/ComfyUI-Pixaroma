@@ -12,6 +12,11 @@ colours; a MESH, GLB or STL keeps its uvs, normals and textures), apply the Fix
 into output in Save, and return that same file on model_3d, so the next node
 gets exactly what was saved.
 
+The report also carries what the face's LIVE Fix preview needs: `fix` (the turns
+and the exact move that were applied, so the viewer can undo them) and `view`
+(a file standing on Y, unscaled: the saved file itself when it is an OBJ or GLB
+on Y, otherwise a separate temp file).
+
 Pure helpers + harness: _mesh3d.py, _save3d_helpers.py, D:\\Claude Tests\\_save3d_test.py.
 """
 from __future__ import annotations
@@ -78,14 +83,39 @@ def _format_notes(model, fmt):
     return notes
 
 
-def _write_preview(data, fmt, uid):
-    """One file per node in temp/pixaroma_save3d, written over on every run."""
+def _write_temp(data, name):
+    """Into temp/pixaroma_save3d, written over on every run."""
     folder = os.path.join(folder_paths.get_temp_directory(), PREVIEW_SUBFOLDER)
     os.makedirs(folder, exist_ok=True)
-    name = "save3d_{}.{}".format(_safe_id(uid), fmt)
     with open(os.path.join(folder, name), "wb") as handle:
         handle.write(data)
     return {"filename": name, "subfolder": PREVIEW_SUBFOLDER, "type": "temp"}
+
+
+def _write_preview(data, fmt, uid):
+    return _write_temp(data, "save3d_{}.{}".format(_safe_id(uid), fmt))
+
+
+def _view_format(model):
+    """The viewer wants polygons and panel groups (OBJ) or colours and textures
+    on triangles (GLB)."""
+    faces = m3.face_summary(model.poly)
+    return "obj" if faces["quads"] + faces["ngons"] or model.poly.group_names else "glb"
+
+
+def _write_view(model, uid):
+    """The fixed model standing on Y and unscaled, for the viewer, when the saved
+    file stands on Z or is an STL."""
+    fmt = _view_format(model)
+    data = m3.write_obj(model.poly, header=WHO) if fmt == "obj" else mio.glb_bytes(model, WHO)
+    return _write_temp(data, "save3d_{}_view.{}".format(_safe_id(uid), fmt))
+
+
+def _fix_report(state, shift):
+    """The Fix as it was applied. `shift` is the exact move added after the turns,
+    so the viewer recovers the input as R^T (F - shift) and previews a new Fix on it."""
+    return {"turns": list(state["turns"]), "center": bool(state["center"]), "ground": bool(state["ground"]),
+            "shift": [float(s) for s in shift]}
 
 
 def _write_saved(data, fmt, state):
@@ -167,16 +197,20 @@ class PixaromaSave3D:
                       "message": "nothing is wired in", "stamp": time.perf_counter()}
             return {"ui": {UI_KEY: [report]}, "result": (mio.blocked(NOTHING_WIRED),)}
 
-        fixed = mio.fix(model, state["turns"], state["center"], state["ground"])
+        fixed, shift = mio.fix(model, state["turns"], state["center"], state["ground"])
         fmt = pick_format(state["format"], fixed.poly)
         notes.extend(_format_notes(fixed, fmt))
         data, z_up = _file_bytes(fixed, fmt, state)
         saved = state["mode"] == "save"
         info = _write_saved(data, fmt, state) if saved else _write_preview(data, fmt, unique_id)
+        # An OBJ or GLB standing on Y is exactly what the viewer needs; anything
+        # else gets a view file of its own, so the saved file is never altered.
+        view = info if fmt in ("obj", "glb") and not z_up else _write_view(fixed, unique_id)
 
         report = {
-            "ok": True, "skipped": False, "mode": state["mode"], "saved": saved, "file": info,
+            "ok": True, "skipped": False, "mode": state["mode"], "saved": saved, "file": info, "view": view,
             "format": fmt, "up": "z" if z_up else "y", "source": fixed.source,
+            "fix": _fix_report(state, shift),
             "faces": m3.face_summary(fixed.poly), "edges": m3.edge_census(fixed.poly),
             "colours": fixed.poly.colours is not None, "texture": "texture" in fixed.images,
             "groups": len(fixed.poly.group_names),
@@ -186,7 +220,13 @@ class PixaromaSave3D:
             "bytes": len(data), "seconds": round(time.perf_counter() - started, 2),
             "notes": notes, "stamp": time.perf_counter(),
         }
-        return {"ui": {UI_KEY: [report]}, "result": (mio.file3d(data, fmt),)}
+        ui = {UI_KEY: [report]}
+        if saved:
+            # Core's own key for a saved 3D file, so ComfyUI's Media Assets panel
+            # lists it (it goes by the file's extension). The frontend adds a viewer
+            # for that key only on its own Save 3D Model node, so ours gets none.
+            ui["3d"] = [info]
+        return {"ui": ui, "result": (mio.file3d(data, fmt),)}
 
 
 NODE_CLASS_MAPPINGS = {CLASS: PixaromaSave3D}

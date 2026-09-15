@@ -275,21 +275,27 @@ def turns_matrix(turns):
     return M
 
 
-def apply_fix(vertices, turns, center, ground):
-    """Turn in the given order, then put the middle of X and Z on the centre and
-    the lowest point on the ground (Y = 0), each only when asked. With both off it
-    is a pure turn, so it also turns normals."""
-    P = np.asarray(vertices, np.float64).reshape(-1, 3) @ turns_matrix(turns).T
+def fix_shift(turned, center, ground):
+    """The move the Fix adds after the turns: the middle of X and Z to 0 and the
+    lowest point to Y = 0, each only when asked. -> (3,) float64. Save 3D reports
+    it, so its viewer can undo a saved Fix exactly: raw = R^T (F - shift)."""
+    P = np.asarray(turned, np.float64).reshape(-1, 3)
+    shift = np.zeros(3)
     if len(P) and (center or ground):
         lo, hi = P.min(0), P.max(0)
-        shift = np.zeros(3)
         if center:
             shift[0] = -(lo[0] + hi[0]) / 2.0
             shift[2] = -(lo[2] + hi[2]) / 2.0
         if ground:
             shift[1] = -lo[1]
-        P = P + shift
-    return P
+    return shift
+
+
+def apply_fix(vertices, turns, center, ground):
+    """Turn in the given order, then move by fix_shift. With center and ground off
+    it is a pure turn, so it also turns normals."""
+    P = np.asarray(vertices, np.float64).reshape(-1, 3) @ turns_matrix(turns).T
+    return P + fix_shift(P, center, ground)
 
 
 def placement_check(vertices, tolerance=0.005):
