@@ -23,7 +23,7 @@ import {
 } from "./core.mjs";
 import { displayTransform, matrixRows, placementFlags } from "./fix.mjs";
 import {
-  buildFace, renderFace, placeBand, destroyFace, closeFormatPopup, flash, setCheckLine, VP_MIN,
+  buildFace, renderFace, placeBand, destroyFace, flash, setCheckLine, VP_MIN,
 } from "./ui.mjs";
 import { openSave3DPanel, closeSave3DPanelFor, isSave3DPanelOpenFor } from "./settings.mjs";
 import { SAVE_3D_HELP } from "./help.mjs";
@@ -256,7 +256,11 @@ app.registerExtension({
       }
       const prev = readLastRun(this);
       const replay = !!prev && prev.stamp != null && prev.stamp === report.stamp;
-      if (!replay) writeLastRun(this, report, this._pixS3dSent || "");
+      // The key of what THIS run wrote comes from its own report. The one stamped in
+      // graphToPrompt belongs to the LAST prompt queued, which can be newer than the run landing
+      // now (queue A, change the Fix, queue B, then A finishes); it is only a fallback.
+      const sent = report.request ? fileKey(report.request) : (this._pixS3dSent || "");
+      if (!replay) writeLastRun(this, report, sent);
       syncView(this, !replay);
     };
 
@@ -285,7 +289,8 @@ app.registerExtension({
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeSave3DPanelFor(this);
-      closeFormatPopup();
+      // destroyFace below closes the Format popup only if THIS node opened it: a bare close here
+      // shut another Save 3D node's open popup whenever any Save 3D node was removed.
       this._pixS3dFloorOff?.();
       this._pixS3dFloorOff = null;
       this._pixS3dZoomOff?.();

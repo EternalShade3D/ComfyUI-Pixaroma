@@ -272,6 +272,10 @@ class PixaromaSave3D:
             "ok": True, "skipped": False, "mode": state["mode"], "saved": saved, "file": info, "view": view,
             "format": fmt, "up": "z" if z_up else "y", "source": fixed.source,
             "fix": _fix_report(state, shift),
+            # What this run was ASKED for, so the face can tell whether the file on the node is
+            # still the one its settings describe. From this run's own state: a key stamped in the
+            # browser at queue time can belong to a NEWER prompt than the run landing now.
+            "request": {k: state[k] for k in ("turns", "center", "ground", "format", "up", "stlSize")},
             "faces": m3.face_summary(fixed.poly), "edges": m3.edge_census(fixed.poly),
             "colours": fixed.poly.colours is not None, "texture": "texture" in fixed.images,
             "groups": len(fixed.poly.group_names),

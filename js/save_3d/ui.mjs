@@ -307,8 +307,13 @@ function switchBtn(label, title) {
   return sw;
 }
 
+/** Close the Format popup only when THIS node opened it; another node's popup stays open. */
+export function closeFormatPopupFor(node) {
+  if (_pop && _popAnchor && _popAnchor === node?._pixS3dEls?.fmt) closeFormatPopup();
+}
+
 export function destroyFace(node) {
-  closeFormatPopup();
+  closeFormatPopupFor(node);
   clearTimeout(node._pixS3dFlashT);
   clearTimeout(node._pixS3dWheelT);
   node._pixS3dEls = null;
