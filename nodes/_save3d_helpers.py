@@ -12,11 +12,12 @@ UPS = ("auto", "y", "z")
 STL_SIZES = ("model", 50, 100, 150, 200, 300)
 MAX_TURNS = 64
 NAME_MAX = 200
+FOLDER_MAX = 1024
 DEFAULT_NAME = "3d/pixaroma"
 
 DEFAULT_STATE = {
     "mode": "preview", "turns": [], "center": True, "ground": True, "format": "auto",
-    "name": DEFAULT_NAME, "up": "auto", "stlSize": 100,
+    "name": DEFAULT_NAME, "up": "auto", "stlSize": 100, "folder": "",
 }
 
 _BAD_CHARS = re.compile(r'[<>:"|?*\x00-\x1f]')
@@ -100,6 +101,11 @@ def parse_state(raw):
         state["stlSize"] = size
     if "name" in data:
         state["name"] = clean_name(data.get("name"))
+    folder = data.get("folder")
+    if isinstance(folder, str):
+        # Kept as typed (quotes, ~ and variables included): node_save_3d screens,
+        # resolves and approves it with Save Image's rules before any use.
+        state["folder"] = folder.strip()[:FOLDER_MAX]
     return state
 
 

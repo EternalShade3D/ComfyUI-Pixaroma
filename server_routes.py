@@ -1587,6 +1587,35 @@ def _resolve_preview_frame(frame):
     return path
 
 
+@PromptServer.instance.routes.post("/pixaroma/api/save3d/save_now")
+async def api_save3d_save_now(request):
+    """Save 3D Pixaroma's Save now: copy the last Preview run's file into the
+    node's save folder without running the workflow again.
+
+    Request JSON: {file: {filename, subfolder, type}, name, folder}.
+    Response JSON: {ok: true, filename, subfolder, type} or {ok: false, error}.
+
+    JSON only: a cross-origin form cannot send it without a preflight that is
+    never answered (registry-compliance.md #2c). Every value is untrusted, and
+    all of the containment lives in node_save_3d.save_now, which the harness
+    tests directly (path-containment.md).
+    """
+    if request.content_type != "application/json":
+        return web.json_response({"ok": False, "error": "send JSON"}, status=415)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+    from .nodes.node_save_3d import save_now as _save3d_save_now
+    try:
+        info = _save3d_save_now(data)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": f"save failed: {e}"}, status=500)
+    return web.json_response({"ok": True, **info})
+
+
 @PromptServer.instance.routes.post("/pixaroma/api/preview/prepare")
 async def api_preview_prepare(request):
     """Embed workflow metadata into a PNG and return it alongside an

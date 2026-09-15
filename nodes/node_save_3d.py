@@ -9,13 +9,18 @@ executed event (free-vram.md #5).
 A run: read the input through _mesh3d_io (an OBJ keeps its quads, groups and
 colours; a MESH, GLB or STL keeps its uvs, normals and textures), apply the Fix
 (turns, center, on the ground), write OBJ, GLB or STL, into temp in Preview and
-into output in Save, and return that same file on model_3d, so the next node
-gets exactly what was saved.
+into the save folder in Save, and return that same file on model_3d, so the next
+node gets exactly what was saved.
 
 The report also carries what the face's LIVE Fix preview needs: `fix` (the turns
 and the exact move that were applied, so the viewer can undo them) and `view`
 (a file standing on Y, unscaled: the saved file itself when it is an OBJ or GLB
-on Y, otherwise a separate temp file).
+on Y that /view can serve, otherwise a separate temp file).
+
+Save now (the button on the face) copies the last Preview file through the
+/pixaroma/api/save3d/save_now route, which calls save_now() below. The save
+folder follows Save Image's rules: empty is the output folder, anything else must
+pass the shared guard (nodes/_path_guard.py).
 
 Pure helpers + harness: _mesh3d.py, _save3d_helpers.py, D:\\Claude Tests\\_save3d_test.py.
 """
@@ -29,14 +34,17 @@ import folder_paths
 
 from . import _mesh3d as m3
 from . import _mesh3d_io as mio
+from ._path_guard import denied_message, folder_allowed, prescreen_folder_field, safe_join
 from ._save3d_helpers import DEFAULT_NAME, check_line, parse_state, pick_format
-from ._save_helpers import _safe_prefix
+from ._save_helpers import _resolve_save_folder, _safe_prefix
 
 CLASS = "PixaromaSave3D"
 HIDDEN_INPUT = "Save3DState"
 UI_KEY = "pixaroma_save3d"
 PREVIEW_SUBFOLDER = "pixaroma_save3d"
 WHO = "Save 3D Pixaroma"
+# The only files Save now may copy: ones this node wrote into its temp folder.
+SOURCE_NAME = re.compile(r"^save3d_[A-Za-z0-9_-]{1,40}\.(obj|glb|stl)$")
 
 NOTHING_WIRED = (
     "Save 3D Pixaroma has nothing to save. Wire a mesh, or a model_3d from Load 3D Pixaroma "
@@ -105,7 +113,7 @@ def _view_format(model):
 
 def _write_view(model, uid):
     """The fixed model standing on Y and unscaled, for the viewer, when the saved
-    file stands on Z or is an STL."""
+    file stands on Z, is an STL, or sits in a folder /view cannot serve."""
     fmt = _view_format(model)
     data = m3.write_obj(model.poly, header=WHO) if fmt == "obj" else mio.glb_bytes(model, WHO)
     return _write_temp(data, "save3d_{}_view.{}".format(_safe_id(uid), fmt))
@@ -118,27 +126,78 @@ def _fix_report(state, shift):
             "shift": [float(s) for s in shift]}
 
 
+def _save_folder(state):
+    """The folder Save writes into -> (absolute path, inside ComfyUI's output folder).
+
+    Empty is the output folder. Anything else goes through Save Image's rules in
+    this exact order (path-containment.md #5 and #11b): the lexical screen BEFORE
+    any resolve, because resolving a UNC path already hands over a credential;
+    then the resolve; then the allowlist. A refusal names the fix (#7).
+    """
+    raw = state.get("folder") or ""
+    if raw and not prescreen_folder_field(raw):
+        raise ValueError(denied_message(raw))
+    folder, inside = _resolve_save_folder(raw)
+    if not folder_allowed(folder):
+        raise ValueError(denied_message(folder))
+    return folder, inside
+
+
 def _write_saved(data, fmt, state):
-    """Into ComfyUI's output folder with Save Image's name rules and core's counter.
+    """Into the save folder with Save Image's name rules and core's counter.
 
     The name was cleaned by parse_state and goes through _safe_prefix (date tokens,
     Windows-illegal characters, reserved names); core's get_save_image_path then
-    refuses any folder outside output/. The file is claimed with O_EXCL, so two
-    runs at the same moment never write over each other.
+    refuses a subfolder that climbs out of the folder. The file is claimed with
+    O_EXCL, so two saves at the same moment never write over each other.
+    -> {filename, subfolder, type}: "output" when /view can serve it, otherwise
+    "external" with the absolute folder.
     """
+    folder, inside = _save_folder(state)
     prefix = _safe_prefix(state["name"]) or DEFAULT_NAME
-    output_dir = folder_paths.get_output_directory()
-    folder, filename, counter, subfolder, _prefix = folder_paths.get_save_image_path(prefix, output_dir)
-    os.makedirs(folder, exist_ok=True)
+    base, filename, counter, _sub, _prefix = folder_paths.get_save_image_path(prefix, folder)
+    os.makedirs(base, exist_ok=True)
     for _attempt in range(1000):
         name = "{}_{:05}_.{}".format(filename, counter, fmt)
         try:
-            with open(os.path.join(folder, name), "xb") as handle:
+            with open(os.path.join(base, name), "xb") as handle:
                 handle.write(data)
-            return {"filename": name, "subfolder": subfolder, "type": "output"}
+            break
         except FileExistsError:
             counter += 1
-    raise ValueError("Save 3D Pixaroma: no free file name was found in {}.".format(folder))
+    else:
+        raise ValueError("Save 3D Pixaroma: no free file name was found in {}.".format(base))
+    if inside:
+        out_dir = os.path.realpath(folder_paths.get_output_directory())
+        rel = os.path.relpath(os.path.realpath(base), out_dir)
+        return {"filename": name, "subfolder": "" if rel == "." else rel, "type": "output"}
+    return {"filename": name, "subfolder": "", "type": "external", "folder": base}
+
+
+def save_now(data):
+    """Save now: copy a Preview run's file into the save folder -> the saved file's info.
+
+    Called by the /pixaroma/api/save3d/save_now route, which is unauthenticated, so
+    every value in `data` is untrusted (path-containment.md #0). The source must be
+    a file this node wrote: type temp, our own subfolder, our own name pattern, and
+    safe_join keeps it inside that folder. The destination follows exactly the same
+    rules as a Save run.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("file"), dict):
+        raise ValueError("Save now needs the file from the last run.")
+    ref = data["file"]
+    name = ref.get("filename")
+    if (ref.get("type") != "temp" or ref.get("subfolder") != PREVIEW_SUBFOLDER
+            or not isinstance(name, str) or not SOURCE_NAME.match(name)):
+        raise ValueError("Save now can only copy a file Save 3D Pixaroma wrote in Preview.")
+    src = safe_join(os.path.join(folder_paths.get_temp_directory(), PREVIEW_SUBFOLDER), name)
+    if not src or not os.path.isfile(src):
+        raise ValueError("The preview file is gone (ComfyUI empties its temp folder when it restarts). "
+                         "Run again, then Save now.")
+    with open(src, "rb") as handle:
+        blob = handle.read()
+    state = parse_state({"name": data.get("name"), "folder": data.get("folder")})
+    return _write_saved(blob, name.rsplit(".", 1)[1].lower(), state)
 
 
 class PixaromaSave3D:
@@ -148,10 +207,10 @@ class PixaromaSave3D:
         "model's shadow show which way the model faces and whether it stands on the ground. The Fix row "
         "changes the file itself: turn the model 90 degrees at a time, center it, and stand it on the "
         "ground. What you see is what gets saved. Preview writes a temporary file only; Save writes into "
-        "your output folder on every run. Format Auto keeps quads as OBJ and writes a triangle model as "
-        "GLB with its colours and textures; STL is for 3D printing. Wire in a mesh, or a model_3d from "
-        "Load 3D Pixaroma or another 3D node. The model_3d output is the saved file, so the next node "
-        "gets exactly what was saved."
+        "your output folder on every run, and Save now copies the last preview without running again. "
+        "Format Auto keeps quads as OBJ and writes a triangle model as GLB with its colours and textures; "
+        "STL is for 3D printing. Wire in a mesh, or a model_3d from Load 3D Pixaroma or another 3D node. "
+        "The model_3d output is the saved file, so the next node gets exactly what was saved."
     )
 
     @classmethod
@@ -203,9 +262,11 @@ class PixaromaSave3D:
         data, z_up = _file_bytes(fixed, fmt, state)
         saved = state["mode"] == "save"
         info = _write_saved(data, fmt, state) if saved else _write_preview(data, fmt, unique_id)
-        # An OBJ or GLB standing on Y is exactly what the viewer needs; anything
-        # else gets a view file of its own, so the saved file is never altered.
-        view = info if fmt in ("obj", "glb") and not z_up else _write_view(fixed, unique_id)
+        # An OBJ or GLB standing on Y that /view can serve is exactly what the
+        # viewer needs; anything else gets a view file of its own, so the saved
+        # file is never altered.
+        servable = info["type"] in ("temp", "output")
+        view = info if fmt in ("obj", "glb") and not z_up and servable else _write_view(fixed, unique_id)
 
         report = {
             "ok": True, "skipped": False, "mode": state["mode"], "saved": saved, "file": info, "view": view,
@@ -221,7 +282,7 @@ class PixaromaSave3D:
             "notes": notes, "stamp": time.perf_counter(),
         }
         ui = {UI_KEY: [report]}
-        if saved:
+        if saved and info["type"] == "output":
             # Core's own key for a saved 3D file, so ComfyUI's Media Assets panel
             # lists it (it goes by the file's extension). The frontend adds a viewer
             # for that key only on its own Save 3D Model node, so ours gets none.
