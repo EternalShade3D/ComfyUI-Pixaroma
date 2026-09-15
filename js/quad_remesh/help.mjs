@@ -22,9 +22,9 @@ export const QUAD_REMESH_HELP = {
     {
       heading: "The controls",
       defs: [
-        ["Quads", "How many quads to lay: 5K, 10K, 25K, 50K, 100K or 200K. 100K, the default, keeps the slots, "
-          + "buttons and panel lines of a hard-surface model crisp. A character, or any model with small round "
-          + "details such as fingers or rings, needs 200K, which takes about twice as long. Fewer quads make a "
+        ["Quads", "How many quads to lay: 5K, 10K, 25K, 50K, 100K or 200K. 200K, the default, keeps the slots, "
+          + "buttons and panel lines of a hard-surface model crisp, and small round details such as fingers or "
+          + "rings round. 100K takes about half as long and suits a simple hard-surface model. Fewer quads make a "
           + "lighter model that rounds off small details, and run faster."],
         ["Symmetry", "Auto mirrors the model when both sides match closely and leaves it whole when they do not. "
           + "X, Y and Z mirror across that axis anyway (the axes of the marker on the view). Off never mirrors."],
@@ -75,21 +75,29 @@ export const QUAD_REMESH_HELP = {
       bullets: [
         "A 3D generator, then Mesh Repair Pixaroma if the model is hollow or torn, then Quad Remesh Pixaroma, then "
           + "Save 3D Pixaroma.",
+        "For a crisper hard-surface model, such as a weapon, a vehicle or armour: Hard Surface Pixaroma on Medium "
+          + "first, then Quad Remesh Pixaroma on 200K. The flat panels come out flat, the rounded edges crisp and "
+          + "the quads clean.",
         "For a new texture, wire the mesh output into ComfyUI's own Unwrap Mesh and bake nodes.",
       ],
     },
     {
       heading: "Good to know",
       bullets: [
-        "ComfyUI's page pauses while the quads are laid: on our test PC about 7 seconds at 100K and about 3 at 25K. "
-          + "The run carries on.",
+        "On its own, this node keeps the model's shape as it came, lumps and soft edges included: 95% of the new "
+          + "surface sits within about 0.04 mm of it on a 100 mm print. To flatten the panels and crisp the edges, "
+          + "run Hard Surface Pixaroma first.",
+        "Put Hard Surface Pixaroma before this node, never after it: sharpening finished quads squeezes some of them "
+          + "flat.",
+        "ComfyUI's page pauses while the quads are laid: on our test PC up to about 15 seconds at 200K, 7 at 100K "
+          + "and 3 at 25K. The run carries on.",
         "Each run lays the quads a little differently, even with the same settings. The shape stays the same.",
         "Holes the model itself has stay open; the small holes the quads would leave are closed.",
         "Tiny loose bits the quads leave around a model's broken spots (pieces of fewer than 8 faces) are removed.",
         "Auto only mirrors a model whose two sides match closely. A detail on one side only, such as a logo or a "
           + "button, keeps it from mirroring. Pick X, Y or Z to mirror anyway.",
-        "Quad Remesh finds the crisp edges on its own. In our tests, running Hard Surface Pixaroma first did not "
-          + "make the quads any cleaner.",
+        "A very small round detail, such as the hole in a robot's chest emblem, can come out a little square: the "
+          + "quads are too big to follow it.",
       ],
     },
   ],

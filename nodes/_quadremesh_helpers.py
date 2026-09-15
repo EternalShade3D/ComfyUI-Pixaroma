@@ -10,9 +10,10 @@ DENSITIES = (5000, 10000, 25000, 50000, 100000, 200000)
 SYMMETRY = ("off", "auto", "x", "y", "z")
 # Every key here changes the output, so all of them go into the prompt; the viewer's settings (Before or
 # Quads, looks, views, light) stay on the node and never reach Python, so looking around never re-runs it.
-# 100,000 quads: on the Ep34 gun the first count whose renders beat both the original and Quad Remesher;
-# 25,000 left small slots and teeth rough (quad_remesh_proto/README.txt step9_quality). Keep core.mjs in step.
-DEFAULT_STATE = {"quads": 100000, "symmetry": "auto", "crisp": True, "keepColours": True, "keepGroups": True}
+# 200,000 quads by default since 2026-09-15 (output/claude_output/improve_chain): the gun rendered crisper at
+# 200,000 than at 100,000, and 100,000 left a robot's emblem rings and fingers blocky (README step11_models);
+# 25,000 left small slots and teeth rough (step9_quality). Keep core.mjs in step.
+DEFAULT_STATE = {"quads": 200000, "symmetry": "auto", "crisp": True, "keepColours": True, "keepGroups": True}
 
 
 def parse_state(raw):

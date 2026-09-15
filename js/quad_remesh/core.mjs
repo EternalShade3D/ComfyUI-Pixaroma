@@ -21,8 +21,8 @@ export const DENSITIES = [
   { id: 10000, label: "10K", tip: "10,000 quads" },
   { id: 25000, label: "25K", tip: "25,000 quads: lighter, and small details come out rough" },
   { id: 50000, label: "50K", tip: "50,000 quads" },
-  { id: 100000, label: "100K", tip: "100,000 quads, the default: crisp slots, buttons and panel lines on hard-surface models" },
-  { id: 200000, label: "200K", tip: "200,000 quads: for characters and small round details such as fingers and rings, about twice as long as 100K" },
+  { id: 100000, label: "100K", tip: "100,000 quads: about half as long as 200K, and small round details come out blocky" },
+  { id: 200000, label: "200K", tip: "200,000 quads, the default: crisp slots and panel lines, and round details such as fingers and rings" },
 ];
 
 export const SYMMETRIES = [
@@ -47,7 +47,7 @@ export const LOOKS = [
 ];
 
 export const DEFAULT_STATE = Object.freeze({
-  quads: 100000, symmetry: "auto", crisp: true, keepColours: true, keepGroups: true,
+  quads: 200000, symmetry: "auto", crisp: true, keepColours: true, keepGroups: true,
   show: "after", look: "wire", view: "Q", az: 40, el: 20, zoom: 1, panX: 0, panY: 0,
   light: "studio", bright: 1, bg: "#262626",
   grid: true, arrow: false, marker: true, shadow: true,

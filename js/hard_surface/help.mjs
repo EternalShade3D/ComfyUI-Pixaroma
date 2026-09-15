@@ -17,9 +17,8 @@ export const HARD_SURFACE_HELP = {
         + "so the flat panels come out flat and the bevels between them close into crisp edges. Round parts "
         + "such as grips, barrels and knobs are found and left alone.\n\n"
         + "It only moves vertices. The model keeps its polygons, its colours and its textures, and nothing is "
-        + "added or removed. Use it before Save 3D Pixaroma for a crisper model to render or print. Quad Remesh "
-        + "Pixaroma finds crisp edges by itself: in our tests, running this node first did not make its quads "
-        + "any cleaner.",
+        + "added or removed. Use it before Save 3D Pixaroma for a crisper model to render or print, or before "
+        + "Quad Remesh Pixaroma for a crisp model with clean quads.",
     },
     {
       heading: "The controls",
@@ -73,8 +72,9 @@ export const HARD_SURFACE_HELP = {
       bullets: [
         "For a crisp model to render or print: a 3D generator, then Mesh Repair Pixaroma if the model is hollow or "
           + "broken, then Hard Surface Pixaroma, then Save 3D Pixaroma.",
-        "For clean quads, wire the model straight into Quad Remesh Pixaroma. Put this node first only when you want "
-          + "its flat panels as groups on the quads.",
+        "For a crisp model with clean quads: this node on Medium, then Quad Remesh Pixaroma on 200K. The quads keep "
+          + "the flat panels and crisp edges, and carry the panels over as groups. Put this node first, never after "
+          + "Quad Remesh: sharpening finished quads squeezes some of them flat.",
         "Before and After is the quickest way to judge a setting: switch between them with the Clay look.",
       ],
     },
