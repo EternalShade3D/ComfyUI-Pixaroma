@@ -137,22 +137,44 @@ export function placeStage(THREE, rec) {
   v.holder.matrix.set(...rows);
   v.holder.updateMatrixWorld(true);
   const size = [0, 1, 2].map((i) => box.max[i] - box.min[i]);
-  v.center = new THREE.Vector3((box.min[0] + box.max[0]) / 2, (box.min[1] + box.max[1]) / 2, (box.min[2] + box.max[2]) / 2);
-  v.half = new THREE.Vector3(size[0] / 2, size[1] / 2, size[2] / 2);
-  v.radius = Math.max(Math.hypot(size[0], size[1], size[2]) / 2, 1e-6);
-  buildFloor(THREE, rec, box, size, accent);
+  const geo = floorGeometry(box, size);
+  // Frame what the view shows, not only the model: the floor under it and the FRONT
+  // arrow with its word. Framing the model alone cut the word off at the corner in
+  // every 3/4 view of a long model (seen live on the gun). The framing ignores the
+  // switches, so turning the arrow off never moves the camera.
+  const fmin = [Math.min(box.min[0], geo.cx - geo.labelW / 2), Math.min(box.min[1], 0), box.min[2]];
+  const fmax = [Math.max(box.max[0], geo.cx + geo.labelW / 2), Math.max(box.max[1], 0), Math.max(box.max[2], geo.reach)];
+  const fsize = [0, 1, 2].map((i) => fmax[i] - fmin[i]);
+  v.center = new THREE.Vector3((fmin[0] + fmax[0]) / 2, (fmin[1] + fmax[1]) / 2, (fmin[2] + fmax[2]) / 2);
+  v.half = new THREE.Vector3(fsize[0] / 2, fsize[1] / 2, fsize[2] / 2);
+  v.radius = Math.max(Math.hypot(fsize[0], fsize[1], fsize[2]) / 2, 1e-6);
+  buildFloor(THREE, rec, box, accent, geo);
 }
 
-function buildFloor(THREE, rec, box, size, accent) {
+/** Where the floor, the arrow and its word go: one place, so the drawing and the framing agree. */
+function floorGeometry(box, size) {
+  const span = Math.max(size[0], size[2], size[1] * 0.5, 1e-4);
+  const L = span * 0.42;
+  const z0 = box.max[2] + span * 0.12;
+  const labelW = span * 0.5;
+  const labelH = labelW / 4;
+  const labelZ = z0 + L + labelH * 0.9;
+  return {
+    span, L, W: span * 0.07, z0, labelW, labelH, labelZ, reach: labelZ + labelH / 2,
+    cx: (box.min[0] + box.max[0]) / 2,
+    cz: (box.min[2] + box.max[2]) / 2,
+  };
+}
+
+function buildFloor(THREE, rec, box, accent, geo) {
   const v = rec.view;
   if (v.stage) {
     v.scene.remove(v.stage.group);
     disposeTree(v.stage.group);
   }
   const group = new THREE.Group();
-  const span = Math.max(size[0], size[2], size[1] * 0.5, 1e-4);
-  const cx = (box.min[0] + box.max[0]) / 2;
-  const cz = (box.min[2] + box.max[2]) / 2;
+  const { span, cx, cz } = geo;
+  const size = [0, 1, 2].map((i) => box.max[i] - box.min[i]);
   const floorSize = span * 3;
 
   const grid = new THREE.GridHelper(floorSize, 12, 0x707070, 0x3c3c3c);
@@ -190,10 +212,9 @@ function buildFloor(THREE, rec, box, size, accent) {
   group.add(light, light.target);
 
   // FRONT: a flat arrow on the floor in front of the model, pointing +Z, and the
-  // word beyond its head, readable from the front.
-  const L = span * 0.42;
-  const W = span * 0.07;
-  const z0 = box.max[2] + span * 0.12;
+  // word beyond its head, readable from the front. Sizes from floorGeometry, which
+  // the framing reads too.
+  const { L, W, z0, labelW, labelH, labelZ } = geo;
   const shape = new THREE.Shape();
   shape.moveTo(-W / 2, 0);
   shape.lineTo(W / 2, 0);
@@ -224,14 +245,12 @@ function buildFloor(THREE, rec, box, size, accent) {
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const labelW = span * 0.5;
-  const labelH = labelW / 4;
   const label = new THREE.Mesh(
     new THREE.PlaneGeometry(labelW, labelH),
     new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide }),
   );
   label.rotation.x = -Math.PI / 2;
-  label.position.set(cx, span * 0.002, z0 + L + labelH * 0.9);
+  label.position.set(cx, span * 0.002, labelZ);
   group.add(label);
 
   for (const mesh of rec.model?.meshes || []) mesh.castShadow = true;
