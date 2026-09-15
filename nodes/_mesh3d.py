@@ -8,14 +8,22 @@ fan-triangulates polygons and so does trimesh, so neither may touch a quad model
 Conventions: Y up, front is +Z (glTF). STL is Z up. Colours are LINEAR 0..1 in
 memory and sRGB on an OBJ `v` line, the same as core's reader.
 
-numpy + scipy only (both come with ComfyUI), no torch and no ComfyUI imports, so
-D:\\Claude Tests\\_save3d_test.py checks it directly.
+Pure numpy + scipy (both come with ComfyUI): no torch, no ComfyUI and no other
+node's code, so D:\\Claude Tests\\_save3d_test.py checks it directly. The ComfyUI
+side (MESH and File3D in and out) is _mesh3d_io.py.
 """
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass, field, replace
 
 import numpy as np
+
+# Points closer than this share of the bounding-box diagonal are one point when
+# edges are counted. The same rule as Mesh Repair's census (weld_ids), so both
+# nodes report the same open and broken edges for the same model.
+WELD_REL = 1e-6
+STL_RECORD = np.dtype([("normal", "<f4", (3,)), ("points", "<f4", (9,)), ("attr", "<u2")])
 
 
 @dataclass
@@ -159,12 +167,13 @@ def write_obj(mesh, header="Pixaroma"):
 
 
 def from_triangles(vertices, faces, colours=None):
+    V = np.asarray(vertices, np.float64).reshape(-1, 3)
     F = np.asarray(faces, np.int64).reshape(-1, 3)
     return PolyMesh(
-        vertices=np.asarray(vertices, np.float64).reshape(-1, 3),
+        vertices=V,
         counts=np.full(len(F), 3, np.int32),
         indices=F.reshape(-1).copy(),
-        colours=None if colours is None else np.asarray(colours, np.float32).reshape(len(np.asarray(vertices).reshape(-1, 3)), -1)[:, :3],
+        colours=None if colours is None else np.asarray(colours, np.float32).reshape(len(V), -1)[:, :3],
     )
 
 
@@ -187,18 +196,39 @@ def face_summary(mesh):
             "ngons": int((counts > 4).sum()), "faces": int(len(counts))}
 
 
-def edge_census(mesh):
+def weld_ids(vertices, rel_eps=WELD_REL):
+    """One id per place: vertices at the same position (a UV seam, or an STL that
+    stores every triangle's corners separately) share an id. -> (ids, id count)."""
+    V = np.asarray(vertices, np.float64).reshape(-1, 3)
+    if len(V) == 0:
+        return np.zeros(0, np.int64), 0
+    lo = V.min(0)
+    diag = float(np.linalg.norm(V.max(0) - lo)) or 1.0
+    q = np.floor((V - lo) / (diag * rel_eps) + 0.5).astype(np.int64)
+    np.clip(q, 0, (1 << 20) - 1, out=q)
+    key = (q[:, 0] << 40) | (q[:, 1] << 20) | q[:, 2]
+    _, inv = np.unique(key, return_inverse=True)
+    inv = inv.reshape(-1).astype(np.int64)
+    return inv, int(inv.max()) + 1
+
+
+def edge_census(mesh, weld=True):
     """Open edges (used by one face), broken edges (more than two), separate pieces,
     and poles: the share of inner vertices where more or fewer than 4 edges meet,
-    reported only for a mostly-quad model (on triangles it means nothing)."""
+    reported only for a mostly-quad model (on triangles it means nothing).
+    Vertices in the same place are welded first, so seams do not count as open."""
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
 
-    nv = len(mesh.vertices)
     counts = np.asarray(mesh.counts, np.int64)
     idx = np.asarray(mesh.indices, np.int64)
-    if nv == 0 or len(counts) == 0:
+    if len(mesh.vertices) == 0 or len(counts) == 0:
         return {"open": 0, "broken": 0, "pieces": 0, "poles_pct": None}
+    if weld:
+        wid, nv = weld_ids(mesh.vertices)
+        idx = wid[idx]
+    else:
+        nv = len(mesh.vertices)
     starts = np.repeat(np.concatenate([[0], np.cumsum(counts)[:-1]]), counts)
     corner = np.arange(len(idx))
     last = corner - starts + 1 == np.repeat(counts, counts)
@@ -236,15 +266,20 @@ TURNS = {
 }
 
 
-def apply_fix(vertices, turns, center, ground):
-    """Turn in the given order, then put the middle of X and Z on the centre and
-    the lowest point on the ground (Y = 0), each only when asked."""
-    P = np.asarray(vertices, np.float64).reshape(-1, 3)
+def turns_matrix(turns):
+    """The turns, applied in order, as one 3x3 matrix."""
     M = np.eye(3)
     for t in turns or []:
         if t in TURNS:
             M = TURNS[t] @ M
-    P = P @ M.T
+    return M
+
+
+def apply_fix(vertices, turns, center, ground):
+    """Turn in the given order, then put the middle of X and Z on the centre and
+    the lowest point on the ground (Y = 0), each only when asked. With both off it
+    is a pure turn, so it also turns normals."""
+    P = np.asarray(vertices, np.float64).reshape(-1, 3) @ turns_matrix(turns).T
     if len(P) and (center or ground):
         lo, hi = P.min(0), P.max(0)
         shift = np.zeros(3)
@@ -282,3 +317,28 @@ def stl_to_y_up(vertices):
     of y_up_to_z_up."""
     P = np.asarray(vertices, np.float64).reshape(-1, 3)
     return np.stack([P[:, 0], P[:, 2], -P[:, 1]], axis=1)
+
+
+def scale_longest(vertices, size):
+    """Scale about the origin so the longest side is `size` (None keeps the units).
+    About the origin, so a model that was centred and on the ground stays so."""
+    P = np.asarray(vertices, np.float64).reshape(-1, 3)
+    if not size or not len(P):
+        return P
+    longest = float((P.max(0) - P.min(0)).max())
+    return P * (float(size) / longest) if longest > 0 else P
+
+
+def stl_bytes(vertices, faces, header=b"Pixaroma"):
+    """A binary STL of the triangles exactly where they are (no turn, no scale):
+    an 80-byte header, the triangle count, then 50 bytes a triangle."""
+    P = np.asarray(vertices, np.float64).reshape(-1, 3)
+    F = np.asarray(faces, np.int64).reshape(-1, 3)
+    tri = P[F]
+    normal = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    length = np.linalg.norm(normal, axis=1, keepdims=True)
+    normal = normal / np.where(length > 0, length, 1.0)
+    records = np.zeros(len(F), STL_RECORD)
+    records["normal"] = normal
+    records["points"] = tri.reshape(-1, 9)
+    return bytes(header)[:80].ljust(80, b" ") + struct.pack("<I", len(F)) + records.tobytes()
