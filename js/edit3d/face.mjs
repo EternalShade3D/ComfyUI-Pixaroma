@@ -244,7 +244,8 @@ export function renderFace(node) {
   els.next.disabled = navOff;
 
   const hasEdit = !!(st.edited && st.fileId && st.stamp);
-  if (hasEdit) {
+  // A throwaway copy (Ctrl+C, Alt-drag, Clone) is configured but never added to a graph: it loads no picture.
+  if (hasEdit && node.graph) {
     const url = snapUrl(st.fileId, st.stamp);
     if (els.img.dataset.src !== url) {
       els.img.dataset.src = url;
