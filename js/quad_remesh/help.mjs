@@ -22,8 +22,8 @@ export const QUAD_REMESH_HELP = {
     {
       heading: "The controls",
       defs: [
-        ["Quads", "How many quads to lay: 5K, 10K, 25K, 50K or 100K. More quads keep finer detail and give a "
-          + "cleaner grid, and take longer."],
+        ["Quads", "How many quads to lay: 5K, 10K, 25K, 50K or 100K. 100K, the default, keeps small slots, buttons "
+          + "and panel lines crisp. Fewer quads make a lighter model that rounds off small details, and run faster."],
         ["Symmetry", "Auto mirrors the model when both sides match closely and leaves it whole when they do not. "
           + "X, Y and Z mirror across that axis anyway (the axes of the marker on the view). Off never mirrors."],
         ["Follow crisp edges", "Keeps edge loops on the model's sharp edges, so slots, buttons and panel lines stay "
@@ -79,7 +79,8 @@ export const QUAD_REMESH_HELP = {
     {
       heading: "Good to know",
       bullets: [
-        "ComfyUI's page pauses while the quads are laid, a few seconds at 25K and longer at 100K. The run carries on.",
+        "ComfyUI's page pauses while the quads are laid: on our test PC about 7 seconds at 100K and about 3 at 25K. "
+          + "The run carries on.",
         "Each run lays the quads a little differently, even with the same settings. The shape stays the same.",
         "Holes the model itself has stay open; the small holes the quads would leave are closed.",
         "Auto only mirrors a model whose two sides match closely. A detail on one side only, such as a logo or a "

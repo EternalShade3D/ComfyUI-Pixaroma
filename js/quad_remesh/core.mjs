@@ -19,9 +19,9 @@ export const WIDGET_TYPE = "pixaroma_quadremesh";
 export const DENSITIES = [
   { id: 5000, label: "5K", tip: "5,000 quads: big quads for a quick low-poly model" },
   { id: 10000, label: "10K", tip: "10,000 quads" },
-  { id: 25000, label: "25K", tip: "25,000 quads: a good middle, a few seconds" },
+  { id: 25000, label: "25K", tip: "25,000 quads: lighter, and small details come out rough" },
   { id: 50000, label: "50K", tip: "50,000 quads" },
-  { id: 100000, label: "100K", tip: "100,000 quads: the cleanest grid and the finest detail, and the longest pause" },
+  { id: 100000, label: "100K", tip: "100,000 quads, the default: the cleanest grid and the finest detail, and the longest pause" },
 ];
 
 export const SYMMETRIES = [
@@ -46,7 +46,7 @@ export const LOOKS = [
 ];
 
 export const DEFAULT_STATE = Object.freeze({
-  quads: 25000, symmetry: "auto", crisp: true, keepColours: true, keepGroups: true,
+  quads: 100000, symmetry: "auto", crisp: true, keepColours: true, keepGroups: true,
   show: "after", look: "wire", view: "Q", az: 40, el: 20, zoom: 1, panX: 0, panY: 0,
   light: "studio", bright: 1, bg: "#262626",
   grid: true, arrow: false, marker: true, shadow: true,
