@@ -85,6 +85,7 @@ export const QUAD_REMESH_HELP = {
           + "The run carries on.",
         "Each run lays the quads a little differently, even with the same settings. The shape stays the same.",
         "Holes the model itself has stay open; the small holes the quads would leave are closed.",
+        "Tiny loose bits the quads leave around a model's broken spots (pieces of fewer than 8 faces) are removed.",
         "Auto only mirrors a model whose two sides match closely. A detail on one side only, such as a logo or a "
           + "button, keeps it from mirroring. Pick X, Y or Z to mirror anyway.",
         "Quad Remesh finds the crisp edges on its own. In our tests, running Hard Surface Pixaroma first did not "

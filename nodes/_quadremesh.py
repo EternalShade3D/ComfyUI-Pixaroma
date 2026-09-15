@@ -22,6 +22,8 @@ import shutil
 import time
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import _mesh3d as m3
@@ -38,6 +40,7 @@ FLAT = 0.01               # a triangle this flat (height / longest edge) is a sl
 FILL_MAX = 600            # the longest hole loop that is walked
 FLIP_SLIVERS = True       # step7: never worse, and better on a model Hard Surface sharpened
 OFF_SAMPLES = 60000       # points spread over the new faces to measure how far they sit off the input
+MIN_PIECE_FACES = 8       # a separate piece with fewer faces is an engine leftover, not a part (step11)
 
 
 class EngineMissing(RuntimeError):
@@ -371,6 +374,38 @@ def mirror_join(V, counts, idx, weld, ax, plane, diag, reverse=True):
 
 # ── holes ────────────────────────────────────────────────────────────────────
 
+def drop_fragments(poly, min_faces=MIN_PIECE_FACES):
+    """Separate pieces with fewer than `min_faces` faces left out, with the points only they used. Pieces are
+    found on points welded by position, like the edge census. The engine leaves such bits around a model's
+    broken spots: they took the rifle from 10 pieces to 55 and the gun from 15 to 21, and dropping them just
+    before the holes are filled gave 9 and 15 (README step11_models). -> (poly, faces dropped)"""
+    counts = np.asarray(poly.counts, np.int64)
+    if min_faces <= 0 or not len(counts):
+        return poly, 0
+    idx = np.asarray(poly.indices, np.int64)
+    wid, nv = m3.weld_ids(poly.vertices)
+    w = wid[idx]
+    starts = np.concatenate([[0], np.cumsum(counts)[:-1]])
+    first = np.repeat(starts, counts)
+    corner = np.arange(len(w))
+    nxt = np.where(corner - first + 1 == np.repeat(counts, counts), first, corner + 1)
+    _n, label = connected_components(coo_matrix((np.ones(len(w)), (w, w[nxt])), shape=(nv, nv)), directed=False)
+    face_label = label[w[starts]]
+    keep = np.bincount(face_label)[face_label] >= min_faces
+    if keep.all():
+        return poly, 0
+    kept_idx = idx[np.repeat(keep, counts)]
+    used = np.unique(kept_idx)
+    remap = np.full(len(poly.vertices), -1, np.int64)
+    remap[used] = np.arange(len(used))
+    return (m3.PolyMesh(vertices=np.asarray(poly.vertices, np.float64)[used], counts=counts[keep].astype(np.int32),
+                        indices=remap[kept_idx],
+                        colours=None if poly.colours is None else np.asarray(poly.colours)[used],
+                        groups=None if poly.groups is None else np.asarray(poly.groups)[keep],
+                        group_names=list(poly.group_names or [])),
+            int((~keep).sum()))
+
+
 def split_at_repeats(verts):
     """A vertex loop that passes a point more than once -> simple loops of 3 or more points. One fan over a
     loop through a point twice uses that point's edges twice (step8 added broken edges that way)."""
@@ -677,6 +712,8 @@ def quad_remesh(poly, params, work_dir, cancel=None, uvs=None, texture=None):
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
     step()
+    out, fragments = drop_fragments(out, MIN_PIECE_FACES)
+    stats["fragment_faces_dropped"] = fragments
     OE, _oc = unique_edges(out.counts, out.indices)
     OV = np.asarray(out.vertices, np.float64)
     edge_len = float(np.linalg.norm(OV[OE[:, 0]] - OV[OE[:, 1]], axis=1).mean()) if len(OE) else 0.0
