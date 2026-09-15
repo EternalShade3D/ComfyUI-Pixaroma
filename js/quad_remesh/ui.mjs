@@ -21,9 +21,9 @@ const ROOT = "pix-qremesh-root";
 export const VP_MIN = 160;
 
 // The Before / Quads switch and the gear float up into the slot band, between the two input labels on the
-// left and the three output labels on the right (CLAUDE.md #39). The node has the same slots as Hard
-// Surface, so these start from its MEASURED offsets (Classic -59, Nodes 2.0 -51, 84 in from each side);
-// re-measure against the dots before calling the face done (plan Task 8).
+// left and the three output labels on the right (CLAUDE.md #39). MEASURED on this node 2026-09-15: with
+// these offsets the band sits 0 px off the middle output row in Classic and on the model_3d dot in Nodes 2.0,
+// the same as Hard Surface, which has the same slots. Re-measure after any slot change.
 const BAND_TOP = -59;
 const BAND_TOP_VUE = -51;
 const BAND_SIDE = 84;

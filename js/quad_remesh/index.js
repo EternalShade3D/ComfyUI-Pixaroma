@@ -29,8 +29,8 @@ import { QUAD_REMESH_HELP } from "./help.mjs";
 // Compat #18). The fixed rows are quads 28, symmetry 28, views 24, looks 24, options 26, info 22, with six
 // 6px gaps and 2 + 8 of padding; the view fills what is left above its floor.
 const WIDGET_MIN_H = 28 + 28 + 24 + 24 + 26 + 22 + 6 * 6 + 10 + VP_MIN;
-// Hard Surface's MEASURED Classic chrome for the same slots (76 above the root, 10 below); re-measure in
-// plan Task 8 (#39).
+// MEASURED on this node 2026-09-15 in Classic: 76 above the root and 10 below (node.size[1] minus the root's
+// height), the same as Hard Surface, which has the same slots. Re-measure after any slot change (#39).
 const CHROME_H = 86;
 const MIN_W = 360;
 const MIN_H = WIDGET_MIN_H + CHROME_H;
