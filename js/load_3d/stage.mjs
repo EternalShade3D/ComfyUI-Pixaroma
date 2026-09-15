@@ -138,29 +138,48 @@ export function placeStage(THREE, rec) {
   v.holder.updateMatrixWorld(true);
   const size = [0, 1, 2].map((i) => box.max[i] - box.min[i]);
   const geo = floorGeometry(box, size);
-  // Frame what the view shows, not only the model: the floor under it and the FRONT
-  // arrow with its word. Framing the model alone cut the word off at the corner in
-  // every 3/4 view of a long model (seen live on the gun). The framing ignores the
-  // switches, so turning the arrow off never moves the camera.
-  const fmin = [Math.min(box.min[0], geo.cx - geo.labelW / 2), Math.min(box.min[1], 0), box.min[2]];
-  const fmax = [Math.max(box.max[0], geo.cx + geo.labelW / 2), Math.max(box.max[1], 0), Math.max(box.max[2], geo.reach)];
-  const fsize = [0, 1, 2].map((i) => fmax[i] - fmin[i]);
-  v.center = new THREE.Vector3((fmin[0] + fmax[0]) / 2, (fmin[1] + fmax[1]) / 2, (fmin[2] + fmax[2]) / 2);
-  v.half = new THREE.Vector3(fsize[0] / 2, fsize[1] / 2, fsize[2] / 2);
-  v.radius = Math.max(Math.hypot(fsize[0], fsize[1], fsize[2]) / 2, 1e-6);
+  // The camera orbits around the MODEL's own centre, as in Load 3D. Centring on model +
+  // floor + arrow swung the model around a point in front of and below it while dragging
+  // (user report 2026-09-15). The camera distance (radius) and the depth box (half) still
+  // cover the floor under the model and the FRONT arrow with its word, so the word is not
+  // cut off in a 3/4 view. The framing ignores the switches, so turning the arrow off
+  // never moves the camera.
+  const c = [0, 1, 2].map((i) => (box.min[i] + box.max[i]) / 2);
+  const points = [];
+  for (const x of [box.min[0], box.max[0]]) {
+    for (const z of [box.min[2], box.max[2]]) {
+      for (const y of [box.min[1], box.max[1], 0]) points.push([x, y, z]);
+    }
+  }
+  for (const x of [geo.cx - geo.labelW / 2, geo.cx + geo.labelW / 2]) {
+    for (const z of [geo.z0, geo.reach]) points.push([x, 0, z]);
+  }
+  const half = [0, 0, 0];
+  let radius = 1e-6;
+  for (const p of points) {
+    radius = Math.max(radius, Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]));
+    for (let i = 0; i < 3; i++) half[i] = Math.max(half[i], Math.abs(p[i] - c[i]));
+  }
+  v.center = new THREE.Vector3(c[0], c[1], c[2]);
+  v.half = new THREE.Vector3(half[0], half[1], half[2]);
+  v.radius = radius;
   buildFloor(THREE, rec, box, accent, geo);
 }
 
-/** Where the floor, the arrow and its word go: one place, so the drawing and the framing agree. */
+/**
+ * Where the floor, the arrow and its word go: one place, so the drawing and the framing
+ * agree. Compact on purpose: the view is framed from the model's centre, so every bit the
+ * arrow reaches past the model makes the model smaller on the node.
+ */
 function floorGeometry(box, size) {
   const span = Math.max(size[0], size[2], size[1] * 0.5, 1e-4);
-  const L = span * 0.42;
-  const z0 = box.max[2] + span * 0.12;
-  const labelW = span * 0.5;
+  const L = span * 0.32;
+  const z0 = box.max[2] + span * 0.06;
+  const labelW = span * 0.4;
   const labelH = labelW / 4;
   const labelZ = z0 + L + labelH * 0.9;
   return {
-    span, L, W: span * 0.07, z0, labelW, labelH, labelZ, reach: labelZ + labelH / 2,
+    span, L, W: span * 0.06, z0, labelW, labelH, labelZ, reach: labelZ + labelH / 2,
     cx: (box.min[0] + box.max[0]) / 2,
     cz: (box.min[2] + box.max[2]) / 2,
   };
