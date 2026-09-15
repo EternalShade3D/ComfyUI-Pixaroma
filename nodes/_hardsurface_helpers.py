@@ -66,6 +66,8 @@ def report_lines(stats, census, notes):
         lines.append(folds)
         if left:
             lines.append("Folded faces left: {}".format(left))
+        if int(stats.get("collapsed_faces", 0)):
+            lines.append("Bevel faces squeezed onto their creases: {}".format(int(stats["collapsed_faces"])))
     lines.append("Open edges: {}, broken: {}".format(int(census.get("open", 0)), int(census.get("broken", 0))))
     lines.extend(str(note) for note in notes or [])
     return lines

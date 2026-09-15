@@ -481,7 +481,7 @@ def _stats(**values):
         "regions": 0, "panels_rejected_rms": 0, "panels_rejected_width": 0, "round_panels": 0,
         "onto_plane": 0, "onto_line": 0, "onto_corner": 0, "filled": 0, "relaxed": 0,
         "beyond_reach": 0, "not_near": 0, "faded_moves": 0,
-        "folded_before": 0, "folded_after": 0, "fold_rounds_used": 0, "fold_shrunk": 0, "fold_undone": 0,
+        "folded_before": 0, "folded_after": 0, "fold_rounds_used": 0, "fold_shrunk": 0, "fold_undone": 0, "collapsed_faces": 0,
         "bent_before": 0.0, "bent_after": 0.0, "moved_mean_mm": 0.0, "moved_max_mm": 0.0,
         "mm_per_unit": 0.0, "cap_units": 0.0, "open": 0, "broken": 0, "left_out_faces": 0,
         "seconds": 0.0,
@@ -590,6 +590,10 @@ def sharpen_triangles(vertices, faces, params, cancel=None):
         not_near=counts["not_near_both_panels"], faded_moves=counts["faded_moves"],
         folded_before=history[0], folded_after=folded_after, fold_rounds_used=len(history) - 1, fold_shrunk=shrunk,
         fold_undone=undone,
+        # Faces that had area and have none now: a bevel squeezed onto its crease on purpose. Their corners
+        # can land on one spot, which a census that welds by position counts as broken edges (live gun:
+        # 935 faces, 214 -> 810 "broken" with identical connectivity), so the node reports this instead.
+        collapsed_faces=int(((A0 > tiny) & (A3 <= tiny)).sum()),
         bent_after=bent_pct(V3, pairs[live], ea[live], eb[live], N3),
         moved_mean_mm=float(mv.mean()) if len(mv) else 0.0, moved_max_mm=float(mv.max()) if len(mv) else 0.0,
     )

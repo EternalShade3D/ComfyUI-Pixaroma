@@ -36,7 +36,7 @@ TEMP_SUBFOLDER = "pixaroma_hardsurface"
 WHO = "Hard Surface Pixaroma"
 # What the face shows from a run; everything else is in the report text.
 FACE_STATS = ("round_panels", "bent_before", "bent_after", "moved_mean_mm", "moved_max_mm", "folded_before",
-              "folded_after", "fold_undone", "cap_units", "seconds")
+              "folded_after", "fold_undone", "collapsed_faces", "cap_units", "seconds")
 
 NOTHING_WIRED = (
     "Hard Surface Pixaroma has nothing to sharpen. Wire a mesh, or a model_3d from Load 3D Pixaroma "
@@ -140,7 +140,10 @@ class PixaromaHardSurface:
         uid = _safe_id(unique_id)
         before_ref = _write_temp(m3.write_obj(model.poly, header=WHO), "hsurf_{}_before.obj".format(uid))
         after_ref = _write_temp(after, "hsurf_{}_after.obj".format(uid))
-        census = m3.edge_census(sharp.poly)
+        # The model's OWN edges, counted on the input: sharpening changes no connectivity, but a bevel
+        # squeezed onto its crease puts corners on one spot, which a census that welds by position would
+        # count as broken edges (live gun: 214 became 810). The squeezed faces get their own line.
+        census = m3.edge_census(model.poly)
         stats = dict(out["stats"], panels=out["panels"])
         lines = report_lines(stats, census, notes)
         report = {
