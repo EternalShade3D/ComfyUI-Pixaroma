@@ -159,12 +159,24 @@ def _write_saved(data, fmt, state):
     os.makedirs(base, exist_ok=True)
     for _attempt in range(1000):
         name = "{}_{:05}_.{}".format(filename, counter, fmt)
+        path = os.path.join(base, name)
         try:
-            with open(os.path.join(base, name), "xb") as handle:
-                handle.write(data)
-            break
+            handle = open(path, "xb")
         except FileExistsError:
             counter += 1
+            continue
+        try:
+            with handle:
+                handle.write(data)
+        except BaseException:
+            # A write that fails half way (a full disk, a folder that went away) must not
+            # leave a half-written file behind under the claimed name (backend review).
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            raise
+        break
     else:
         raise ValueError("Save 3D Pixaroma: no free file name was found in {}.".format(base))
     if inside:
@@ -256,6 +268,10 @@ class PixaromaSave3D:
                       "message": "nothing is wired in", "stamp": time.perf_counter()}
             return {"ui": {UI_KEY: [report]}, "result": (mio.blocked(NOTHING_WIRED),)}
 
+        bad = m3.count_non_finite(model.poly.vertices)
+        if bad:
+            notes.append("{} vertices have a position that is not a number: the Fix and the check line "
+                         "leave them out, and they are written as they came in.".format(bad))
         fixed, shift = mio.fix(model, state["turns"], state["center"], state["ground"])
         fmt = pick_format(state["format"], fixed.poly)
         notes.extend(_format_notes(fixed, fmt))
@@ -266,7 +282,17 @@ class PixaromaSave3D:
         # viewer needs; anything else gets a view file of its own, so the saved
         # file is never altered.
         servable = info["type"] in ("temp", "output")
-        view = info if fmt in ("obj", "glb") and not z_up and servable else _write_view(fixed, unique_id)
+        if fmt in ("obj", "glb") and not z_up and servable:
+            view = info
+        else:
+            try:
+                view = _write_view(fixed, unique_id)
+            except Exception as exc:
+                # The file itself is already written: report it rather than fail the run and
+                # lose it, since a retry would save a second copy (backend review 2026-09-15).
+                view = info
+                notes.append("The view on the node could not be made ({}); the file itself was written."
+                             .format(exc))
 
         report = {
             "ok": True, "skipped": False, "mode": state["mode"], "saved": saved, "file": info, "view": view,

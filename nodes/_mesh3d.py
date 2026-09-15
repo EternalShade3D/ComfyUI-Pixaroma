@@ -68,7 +68,9 @@ def read_obj(data):
     `v x y z r g b` colours are read as sRGB and kept linear. Texture coordinates,
     normals and the .mtl file are not read.
     """
-    text = bytes(data).decode("utf-8", "replace") if isinstance(data, (bytes, bytearray)) else str(data)
+    # utf-8-sig drops a leading BOM: left in, it glues onto the first `v` and that vertex is
+    # skipped, so every face after it points one vertex off (backend review 2026-09-15).
+    text = bytes(data).decode("utf-8-sig", "replace") if isinstance(data, (bytes, bytearray)) else str(data)
     positions, colours = [], []
     has_colour = False
     counts, flat = [], []
@@ -281,6 +283,9 @@ def fix_shift(turned, center, ground):
     it, so its viewer can undo a saved Fix exactly: raw = R^T (F - shift)."""
     P = np.asarray(turned, np.float64).reshape(-1, 3)
     shift = np.zeros(3)
+    # Only vertices that are real numbers count: a single NaN or inf would otherwise turn
+    # the shift, and with it EVERY vertex, into NaN (backend review 2026-09-15).
+    P = P[np.isfinite(P).all(axis=1)]
     if len(P) and (center or ground):
         lo, hi = P.min(0), P.max(0)
         if center:
@@ -298,10 +303,18 @@ def apply_fix(vertices, turns, center, ground):
     return P + fix_shift(P, center, ground)
 
 
+def count_non_finite(vertices):
+    """How many vertices have a coordinate that is not a real number (NaN or inf)."""
+    P = np.asarray(vertices, np.float64).reshape(-1, 3)
+    return int((~np.isfinite(P).all(axis=1)).sum())
+
+
 def placement_check(vertices, tolerance=0.005):
     """What can be measured about where the model sits: above the ground, into
-    it, or away from the centre, each beyond 0.5% of its longest side."""
+    it, or away from the centre, each beyond 0.5% of its longest side. Vertices
+    that are not real numbers are left out, or one of them would hide the answer."""
     P = np.asarray(vertices, np.float64).reshape(-1, 3)
+    P = P[np.isfinite(P).all(axis=1)]
     if not len(P):
         return {"floating": False, "sunk": False, "off_center": False}
     lo, hi = P.min(0), P.max(0)
