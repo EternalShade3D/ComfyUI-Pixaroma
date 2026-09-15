@@ -276,8 +276,8 @@ export function buildFace(node, handlers) {
   const fmtValue = el("span", "pix-s3d-dd", "Auto");
   fmt.append(el("span", "pix-s3d-k", "Format"), fmtValue, el("span", "pix-s3d-tri", "▼"));
   const name = el("label", "pix-s3d-name");
-  name.title = "The folder and file name inside the output folder, for example 3d/gun. A counter is added, and "
-    + "date tokens such as %date:yyyy-MM-dd% work.";
+  name.title = "The folder and file name inside the save folder (the output folder unless the gear names another), "
+    + "for example 3d/gun. A counter is added, and date tokens such as %date:yyyy-MM-dd% work.";
   const nameInput = document.createElement("input");
   nameInput.type = "text";
   nameInput.spellcheck = false;
@@ -383,7 +383,8 @@ export function renderFace(node) {
   els.msg.style.display = msg ? "" : "none";
   els.chip.textContent = run ? facesText(run.faces) : "";
   els.chip.style.display = run && s.status === "ready" ? "" : "none";
-  if (!run) setCheckLine(node, null);
+  // Until the file has loaded nothing has drawn, and the line would sit empty: say Loading.
+  if (!run || (s.status !== "ready" && s.status !== "error")) setCheckLine(node, null);
 
   let line = run ? runInfo(run) : "No run yet";
   let lineBad = false;

@@ -9,16 +9,16 @@ export const SAVE_3D_HELP = {
     + "upright stand up lying down lying on its back wrong way round front back which way is front orientation "
     + "floor ground floating sunk centered center origin pivot preview 3d 3d viewer wireframe wire clay normal "
     + "model_3d mesh pixal3d trellis hunyuan3d quad remesher blender zbrush meshlab media assets output folder "
-    + "file name date y up z up millimetres mm",
+    + "save folder browse file name date y up z up millimetres mm",
   sections: [
     {
       heading: "What it does",
       body:
         "Shows the model that reaches it in a 3D view on the node, and saves it as a file. Wire in a mesh "
         + "from a 3D generator or a mesh node, or a model_3d from Load 3D Pixaroma or another 3D node.\n\n"
-        + "Preview writes a temporary file to look at. Save writes the file into your output folder on every "
-        + "run. Either way the model_3d output is exactly the file that was written, so the next node gets "
-        + "what you see.",
+        + "Preview writes a temporary file to look at. Save writes the file into the save folder on every "
+        + "run: ComfyUI's output folder, unless the gear names another. Either way the model_3d output is "
+        + "exactly the file that was written, so the next node gets what you see.",
     },
     {
       heading: "Which way is front",
@@ -49,7 +49,7 @@ export const SAVE_3D_HELP = {
     {
       heading: "Looking around",
       defs: [
-        ["Drag", "Turns the view. Turning the view never changes the file."],
+        ["Drag", "Turns the view around the middle of the model. Turning the view never changes the file."],
         ["Right-drag or Shift-drag", "Moves the view."],
         ["Scroll", "Zooms. With Nodes 2.0 on, click the view once first."],
         ["Double-click or Fit", "Frames the whole model again."],
@@ -81,12 +81,13 @@ export const SAVE_3D_HELP = {
           + "panel groups and vertex colours. GLB keeps colours and textures but holds triangles only. STL "
           + "is for 3D printers: it stands on Z, its longest side is 100 mm unless the gear says otherwise, "
           + "and it keeps no colours."],
-        ["Name", "The folder and file name inside the output folder, for example 3d/gun. A counter is added, "
+        ["Name", "The folder and file name inside the save folder, for example 3d/gun. A counter is added, "
           + "so nothing is ever written over, and date tokens such as %date:yyyy-MM-dd% work as they do in "
-          + "Save Image Pixaroma. The default 3d folder is one Load 3D Pixaroma lists, so a saved model can be "
-          + "loaded again."],
+          + "Save Image Pixaroma. In the output folder, the default 3d folder is one Load 3D Pixaroma lists, "
+          + "so a saved model can be loaded again."],
         ["The gear", "Switches for the floor grid, the FRONT arrow, the X Y Z marker and the shadow, the light, "
-          + "the background, which way is up in the saved file, the STL size, and the button colour."],
+          + "the background, the save folder, which way is up in the saved file, the STL size, and the button "
+          + "colour."],
       ],
     },
     {
