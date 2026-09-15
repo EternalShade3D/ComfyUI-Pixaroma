@@ -194,8 +194,8 @@ export function openHardSurfacePanel(node, onChange) {
   const resultWrap = section(body, "The result",
     "These two change what the node hands on, so they apply at the next run.");
   switchRow(resultWrap, node, "panelsAsGroups", "Panels as materials",
-    "The model_3d file gets one group, and material, for each flat panel, so a quad remesher can keep its "
-    + "edges along the panel borders and the Panels look shows them. Off keeps the model's own groups.", set);
+    "The model_3d file gets one group, and material, for each flat panel: the Panels look shows them, and "
+    + "Quad Remesh Pixaroma carries them onto its quads. Off keeps the model's own groups.", set);
   switchRow(resultWrap, node, "keepColours", "Keep colours",
     "Keeps the vertex colours in both outputs. Off leaves them out, for a plain grey model.", set);
 

@@ -68,13 +68,14 @@ def _write_temp(data, name):
 
 class PixaromaHardSurface:
     DESCRIPTION = (
-        "Makes an AI 3D model hard-surface again before you remesh it: flat panels come out flat and the "
+        "Makes an AI 3D model hard-surface again: flat panels come out flat and the "
         "rounded bevels between them become crisp edges, while round parts such as grips and barrels are "
         "left alone. It only moves vertices, by a fraction of a millimetre measured as if the model were "
         "printed 100 mm long, so the model keeps its polygons, colours and textures. Sharpen sets how far "
         "it may move: Light, Medium or Strong. Wire in a mesh, or a model_3d from Load 3D Pixaroma or another "
-        "3D node. The model_3d output is an OBJ with one group per flat panel, ready for Quad Remesh "
-        "Pixaroma or Save 3D Pixaroma; the mesh output goes to any mesh node; report says what changed."
+        "3D node. The model_3d output is an OBJ with one group per flat panel, ready for Save 3D Pixaroma "
+        "(Quad Remesh Pixaroma finds crisp edges by itself and carries the panels onto its quads); the mesh "
+        "output goes to any mesh node; report says what changed."
     )
 
     @classmethod

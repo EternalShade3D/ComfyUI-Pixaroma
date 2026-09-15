@@ -17,8 +17,9 @@ export const HARD_SURFACE_HELP = {
         + "so the flat panels come out flat and the bevels between them close into crisp edges. Round parts "
         + "such as grips, barrels and knobs are found and left alone.\n\n"
         + "It only moves vertices. The model keeps its polygons, its colours and its textures, and nothing is "
-        + "added or removed. Use it before Quad Remesh Pixaroma, which then follows the crisp edges, or on its "
-        + "own before Save 3D Pixaroma.",
+        + "added or removed. Use it before Save 3D Pixaroma for a crisper model to render or print. Quad Remesh "
+        + "Pixaroma finds crisp edges by itself: in our tests, running this node first did not make its quads "
+        + "any cleaner.",
     },
     {
       heading: "The controls",
@@ -61,8 +62,8 @@ export const HARD_SURFACE_HELP = {
       heading: "What comes out",
       defs: [
         ["mesh", "The sharpened model as a mesh, with its colours, uvs and textures. Wire it into any mesh node."],
-        ["model_3d", "The sharpened model as an OBJ file, with one group for each flat panel. Wire it into Quad "
-          + "Remesh Pixaroma or Save 3D Pixaroma."],
+        ["model_3d", "The sharpened model as an OBJ file, with one group for each flat panel. Wire it into Save 3D "
+          + "Pixaroma, or into Quad Remesh Pixaroma, which carries the panels onto its quads."],
         ["report", "What the run did, as text: the flat panels found, the round parts kept, how much crisper the "
           + "edges got, how far vertices moved and how many folded faces were repaired."],
       ],
@@ -70,8 +71,10 @@ export const HARD_SURFACE_HELP = {
     {
       heading: "A good chain",
       bullets: [
-        "A 3D generator, then Mesh Repair Pixaroma if the model is hollow or broken, then Hard Surface Pixaroma, "
-          + "then Quad Remesh Pixaroma, then Save 3D Pixaroma.",
+        "For a crisp model to render or print: a 3D generator, then Mesh Repair Pixaroma if the model is hollow or "
+          + "broken, then Hard Surface Pixaroma, then Save 3D Pixaroma.",
+        "For clean quads, wire the model straight into Quad Remesh Pixaroma. Put this node first only when you want "
+          + "its flat panels as groups on the quads.",
         "Before and After is the quickest way to judge a setting: switch between them with the Clay look.",
       ],
     },
