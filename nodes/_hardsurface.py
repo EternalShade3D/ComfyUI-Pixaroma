@@ -24,10 +24,13 @@ from __future__ import annotations
 
 import time
 from collections import deque
+from dataclasses import replace
 
 import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.spatial import cKDTree
+
+from . import _mesh3d as m3
 
 PRINT_MM = 100.0
 
@@ -590,3 +593,40 @@ def sharpen_triangles(vertices, faces, params, cancel=None):
         bent_after=bent_pct(V3, pairs[live], ea[live], eb[live], N3),
         moved_mean_mm=float(mv.mean()) if len(mv) else 0.0, moved_max_mm=float(mv.max()) if len(mv) else 0.0,
     )
+
+
+def sharpen_poly(poly, params, panels_as_groups=True, keep_colours=True, cancel=None):
+    """A _mesh3d.PolyMesh -> {"poly": PolyMesh, "panels": int, "stats": dict}.
+
+    The sharpen step works on triangles with one vertex per place, so vertices at the same position (a
+    UV seam, an STL's separate corners) are welded for it and all move together. The polygons come
+    back exactly as they came in (same faces, same order, same vertex count), so uvs and anything else
+    kept per vertex stay valid. With `panels_as_groups` each polygon's group is the panel of its first
+    triangle, named `panel_N`, and polygons in no panel share the last group, `rest`; otherwise the
+    model keeps its own groups. With `keep_colours` off the vertex colours are left out."""
+    V = np.asarray(poly.vertices, np.float64).reshape(-1, 3)
+    counts = np.asarray(poly.counts, np.int64)
+    ids, count = m3.weld_ids(V)
+    first = np.zeros(0, np.int64)
+    if count:
+        _u, first = np.unique(ids, return_index=True)
+        # weld_ids numbers places in the order of their quantised positions. Number them in the order
+        # they first appear instead, so a model that is already welded goes through with its vertices
+        # in their own order and gives exactly what the triangle path gives (harness A11).
+        rank = np.empty(count, np.int64)
+        rank[np.argsort(first, kind="stable")] = np.arange(count)
+        ids = rank[ids]
+        first = np.sort(first)
+    _V, T, _C = m3.triangulate(poly)
+    res = sharpen_triangles(V[first], ids[T], params, cancel)
+
+    groups, names = poly.groups, list(poly.group_names or [])
+    if panels_as_groups:
+        first_tri = np.concatenate([[0], np.cumsum(counts - 2)[:-1]]).astype(np.int64)
+        poly_panel = res["face_panel"][first_tri] if len(counts) else np.zeros(0, np.int64)
+        P = int(res["panels"])
+        groups = np.where(poly_panel >= 0, poly_panel, P).astype(np.int32)
+        names = ["panel_{}".format(i) for i in range(P)] + ["rest"]
+    out = replace(poly, vertices=res["vertices"][ids], groups=groups, group_names=names,
+                  colours=poly.colours if keep_colours else None)
+    return {"poly": out, "panels": int(res["panels"]), "stats": res["stats"]}
