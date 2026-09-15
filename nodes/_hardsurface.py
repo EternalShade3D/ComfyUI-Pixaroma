@@ -11,8 +11,8 @@ What happens to one welded triangle mesh:
      regions. The filtered normals only FIND regions: the surface keeps its own positions, because
      filtering the surface itself softened small details away.
   2. Panels: regions that fit a plane closely and are wide enough in it. With Keep round, a panel
-     that continues smoothly into two or more neighbouring panels is a strip of a curved part, and
-     it is dropped, so round parts are left alone.
+     whose own surface bends across it is a strip of a curved part, and it is dropped, so round
+     parts are left alone.
   3. A vertex whose faces all lie in one panel goes onto that panel's plane. A bevel vertex goes
      onto the line where two panel planes cross, or the point where three do, and only when every
      panel it uses really reaches that place. Bevel vertices left behind follow their neighbours.
@@ -35,7 +35,7 @@ PRINT_MM = 100.0
 BASE = {
     "iters": 6, "sigma_r": 0.3, "panel_min": 0.0002, "panel_rms": 0.35, "min_width": 1.2,
     "hops": 4, "near": 0.6, "fill": 1, "soft": 1, "relax": 3, "fold_rounds": 12, "fold_keep": 0.5,
-    "fold_undo": True, "keep_round": True, "round_min_angle": 3.0,
+    "fold_undo": True, "keep_round": True, "round_bend": 9.0, "round_fit": 0.5,
 }
 # Undoing moves spreads one ring of faces per pass and always ends (every pass puts at least one
 # vertex back where it was); a cascade over a whole model would cost a face pass each time.
@@ -203,27 +203,50 @@ def panels(V, F, label, nreg, A, N, mm, s):
     return np.asarray(normals).reshape(-1, 3), np.asarray(offsets), lookup[label], regions, rejected
 
 
-def round_panels(face_panel, pairs, PN, s):
-    """Panels that continue smoothly into two or more neighbouring panels -> bool (P,).
+def bend_fit(Q):
+    """How far a set of points turns across itself -> (bend in degrees, rms off the best plane,
+    rms off the best quadratic). A quadratic height field is fitted in the points' own plane; the bend
+    is its largest principal curvature times the extent of the points in that direction."""
+    X = Q - Q.mean(0)
+    _u, _sv, vt = np.linalg.svd(X, full_matrices=False)
+    u, w, h = X @ vt[0], X @ vt[1], X @ vt[2]
+    A = np.stack([np.ones_like(u), u, w, u * u, u * w, w * w], 1)
+    c, *_rest = np.linalg.lstsq(A, h, rcond=None)
+    vals, vecs = np.linalg.eigh(np.array([[2 * c[3], c[4]], [c[4], 2 * c[5]]]))
+    best = 0.0
+    for k in range(2):
+        t = u * vecs[0, k] + w * vecs[1, k]
+        extent = float(np.percentile(t, 95) - np.percentile(t, 5)) / 0.9
+        best = max(best, abs(float(vals[k])) * extent)
+    return float(np.degrees(best)), float(np.sqrt((h ** 2).mean())), float(np.sqrt(((A @ c - h) ** 2).mean()))
 
-    Keep round, which the prototype did not have: a curved part (a grip, a rim, a barrel) is cut by
-    the region growing into strips that each fit a plane well enough to pass as panels, and
-    flattening them turns the part into a polygon (the prototype's crumpled grip; A5a in the
-    harness). Two panels are neighbours when a triangle edge joins them. Smoothly means their
-    planes meet at more than `round_min_angle` (less is one lumpy flat side split in two) and less
-    than `dihedral` (more is a crease the sharpen step makes crisp). A strip of a curved part has
-    such a neighbour on both sides; a flat side meets its neighbours at a crease or through a bevel
-    that is no panel at all, so it has none."""
-    a, b = face_panel[pairs[:, 0]], face_panel[pairs[:, 1]]
-    keep = (a >= 0) & (b >= 0) & (a != b)
-    if not keep.any():
-        return np.zeros(len(PN), bool)
-    touching = np.unique(np.stack([np.minimum(a[keep], b[keep]), np.maximum(a[keep], b[keep])], 1), axis=0)
-    # Both normals face outward, so the angle between them is the bend (a thin fin's tip is near 180).
-    dot = np.clip((PN[touching[:, 0]] * PN[touching[:, 1]]).sum(1), -1.0, 1.0)
-    ang = np.degrees(np.arccos(dot))
-    smooth = touching[(ang > s["round_min_angle"]) & (ang < s["dihedral"])]
-    return np.bincount(smooth.ravel(), minlength=len(PN)) >= 2
+
+def round_panels(V, F, face_panel, npanel, s):
+    """Panels whose own surface bends -> bool (P,).
+
+    Keep round, which the prototype did not have: a curved part (a grip, a rim, a barrel) is cut by the
+    region growing into strips that each fit a plane well enough to pass as panels, and flattening them
+    turns the part into facets (the prototype's crumpled grip; harness A5a). A panel is round when its
+    points turn by `round_bend` degrees or more across it AND a quadratic explains that turn (its rms is
+    at most `round_fit` times the plane's), so the noise on a narrow strip cannot pass for a curve.
+
+    The first cut counted NEIGHBOURS instead (two or more panels meeting it at 3 to `dihedral` degrees)
+    and dropped the gun's big flat sides, because a flat side between two shallow chamfers looks exactly
+    like a strip of a cylinder that way (harness A5c). Measured on the gun (hs_round_probe.py): flat
+    sides bend 0.7 to 7.4 degrees, curved strips 8 to 37, rounded bevel strips 38 to 40; rendered, this
+    rule leaves the muzzle, the back of the grip, the trigger guard's inner curve and the rounded rear
+    corner alone and keeps every flat side a panel."""
+    out = np.zeros(npanel, bool)
+    has = face_panel >= 0
+    order = np.argsort(face_panel, kind="stable")
+    counts = np.bincount(face_panel[has], minlength=npanel)
+    start = int((~has).sum())
+    for p in range(npanel):
+        idx = order[start:start + counts[p]]
+        start += counts[p]
+        bend, plane_rms, quad_rms = bend_fit(V[np.unique(F[idx].ravel())])
+        out[p] = bend >= s["round_bend"] and quad_rms <= s["round_fit"] * plane_rms
+    return out
 
 
 def drop_panels(PN, PD, face_panel, keep):
@@ -530,7 +553,7 @@ def sharpen_triangles(vertices, faces, params, cancel=None):
     PN, PD, face_panel, _regions, rejected = panels(V, F, label, nreg, A0, N0, mm, s)
     round_count = 0
     if s.get("keep_round") and len(PN):
-        is_round = round_panels(face_panel, pairs, PN, s)
+        is_round = round_panels(V, F, face_panel, len(PN), s)
         round_count = int(is_round.sum())
         if round_count:
             PN, PD, face_panel = drop_panels(PN, PD, face_panel, ~is_round)
