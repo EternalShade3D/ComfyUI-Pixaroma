@@ -16,6 +16,9 @@ import { NONE, splitModelName, fmtBytes, fmtInt } from "./core.mjs";
 // The size the picture is drawn at can come from a wire, so the frame, the drag
 // maths and the capture all read the EFFECTIVE state, never the stored one.
 import { effectiveState } from "./size.mjs";
+// Save 3D Pixaroma draws through this same renderer in STAGE mode (stage.mjs);
+// a node attached without options never reaches it.
+import { placeStage, decorateStage, stageLook, ensureStageWires, drawMarker, objPolygonEdges } from "./stage.mjs";
 
 const VENDOR = "/pixaroma/vendor/three"; // a BARE base, wrapped at each use (hosted-urls.md #4)
 const vendor = (tail) => pixApiUrl(VENDOR + tail);
@@ -51,17 +54,22 @@ function recOf(node) {
   if (!rec) {
     rec = {
       node, canvas: null, onStatus: null, status: "empty", info: null, error: "",
-      value: "", seq: 0, loading: null, model: null, view: null, anim: null,
+      value: "", seq: 0, loading: null, model: null, view: null, anim: null, opts: null, stageBox: null,
     };
     _recs.set(node, rec);
   }
   return rec;
 }
 
-export function attachCanvas(node, canvas, onStatus) {
+/**
+ * `opts` (Save 3D) = {stage: true, getState(node), display(node, fileBox), accent(node)}.
+ * Without it the node is drawn exactly the way Load 3D always was.
+ */
+export function attachCanvas(node, canvas, onStatus, opts = null) {
   const rec = recOf(node);
   rec.canvas = canvas;
   rec.onStatus = onStatus || null;
+  rec.opts = opts || null;
   requestDraw(node);
 }
 
@@ -78,6 +86,11 @@ export function statusOf(node) {
   const rec = _recs.get(node);
   if (!rec) return { status: "empty", info: null, error: "", value: "" };
   return { status: rec.status, info: rec.info, error: rec.error, value: rec.value };
+}
+
+/** The state a node is drawn with: its own getter (Save 3D) or Load 3D's effective state. */
+function stateOf(rec) {
+  return rec.opts?.getState ? rec.opts.getState(rec.node) : effectiveState(rec.node);
 }
 
 function setStatus(rec, status, error = "") {
@@ -249,11 +262,12 @@ function countObjFaces(text) {
   return out;
 }
 
-async function parseModel(THREE, p, buf) {
+async function parseModel(THREE, p, buf, edges = false) {
   const manager = makeManager(THREE);
   const base = baseFor(p);
   let object = null;
   let polys = null;
+  let objEdges = null;
   switch (p.ext) {
     case "glb":
     case "gltf": {
@@ -269,6 +283,8 @@ async function parseModel(THREE, p, buf) {
       ]);
       const text = new TextDecoder().decode(buf);
       polys = countObjFaces(text);
+      // Stage mode draws the file's own polygon edges in Wire (quads stay quads).
+      if (edges) objEdges = objPolygonEdges(text);
       const loader = new OBJLoader(manager);
       const lib = (text.match(/^[ \t]*mtllib[ \t]+(.+?)[ \t]*$/m) || [])[1]
         || p.filename.replace(/\.obj$/i, ".mtl");
@@ -319,7 +335,7 @@ async function parseModel(THREE, p, buf) {
       throw new Error("this file type is not supported");
   }
   if (!object) throw new Error("the file holds no 3D model");
-  return { object, polys };
+  return { object, polys, objEdges };
 }
 
 function colourful(c) {
@@ -452,7 +468,7 @@ export function setModel(node, value) {
       const got = await fetchBuffer(viewUrl(p.type, p.subfolder, p.filename));
       const buf = got?.buf || got;
       if (seq !== rec.seq) return;
-      const { object, polys } = await parseModel(THREE, p, buf);
+      const { object, polys, objEdges } = await parseModel(THREE, p, buf, !!rec.opts?.stage);
       if (seq !== rec.seq) {
         disposeModel({ model: prepareModel(object, null, 0, ""), view: null });
         return;
@@ -460,10 +476,13 @@ export function setModel(node, value) {
       const view = ensureView(THREE, rec);
       disposeModel(rec);
       rec.model = prepareModel(object, polys, buf.byteLength, p.ext);
+      rec.model.objEdges = objEdges || null;
+      rec.stageBox = null;
       // Which copy of the file this view was drawn from (see refreshIfReplaced).
       rec.stamp = got?.stamp || null;
       view.holder.add(object);
       view.orient = "";
+      view.stageKey = "";
       rec.info = rec.model.info;
       setStatus(rec, "ready");
     } catch (e) {
@@ -570,7 +589,9 @@ function cameraFor(THREE, v, st, az, el, outAspect, viewAspect, spanScale) {
   if (Math.abs(el) > 89.5) up.set(-Math.sin(a) * Math.sign(el), 0, -Math.cos(a) * Math.sign(el));
   const right = new THREE.Vector3().crossVectors(up, dir).normalize();
   const upv = new THREE.Vector3().crossVectors(dir, right).normalize();
-  const target = new THREE.Vector3().addScaledVector(right, st.panX * r).addScaledVector(upv, st.panY * r);
+  // Stage mode aims at the model's own centre; Load 3D centres the model at the origin.
+  const target = (v.center ? v.center.clone() : new THREE.Vector3())
+    .addScaledVector(right, st.panX * r).addScaledVector(upv, st.panY * r);
   let cam;
   let dist;
   if (st.proj === "ortho") {
@@ -833,7 +854,7 @@ function applyLights(v, st, cam) {
   place(v.rim, 0.2, 0.9, -1.4);
 }
 
-function renderScene(THREE, r, rec, st, cam, w, h, { grid, pointPx, clearAlpha = 1 }) {
+function renderScene(THREE, r, rec, st, cam, w, h, { grid, pointPx, clearAlpha = 1, stage = false }) {
   const v = rec.view;
   const model = rec.model;
   // Depth spans the model's own box as seen from THIS camera, not a sphere
@@ -845,8 +866,12 @@ function renderScene(THREE, r, rec, st, cam, w, h, { grid, pointPx, clearAlpha =
   if (half) {
     const fwd = cam.userData.pix.dir;
     const px = cam.position.x, py = cam.position.y, pz = cam.position.z;
+    // Stage mode keeps the model where its file puts it, so its box is not at the origin.
+    const c = stage && v.center ? v.center : null;
     for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
-      const d = -((sx * half.x - px) * fwd.x + (sy * half.y - py) * fwd.y + (sz * half.z - pz) * fwd.z);
+      const d = c
+        ? -((c.x + sx * half.x - px) * fwd.x + (c.y + sy * half.y - py) * fwd.y + (c.z + sz * half.z - pz) * fwd.z)
+        : -((sx * half.x - px) * fwd.x + (sy * half.y - py) * fwd.y + (sz * half.z - pz) * fwd.z);
       if (d < near) near = d;
       if (d > far) far = d;
     }
@@ -858,17 +883,25 @@ function renderScene(THREE, r, rec, st, cam, w, h, { grid, pointPx, clearAlpha =
   }
   near = Math.max(near, dist * 1e-3);
   far = Math.max(far, near + 1e-6);
-  const lit = st.look === "color" || st.look === "clay" || st.look === "wire";
-  if (st.look === "wire") ensureWires(THREE, model);
+  const lit = st.look === "color" || st.look === "clay" || st.look === "wire" || st.look === "panels";
+  if (st.look === "wire") {
+    // Stage wires first: once model.wires is set, ensureWires leaves it alone.
+    if (stage) ensureStageWires(THREE, model, mats(THREE).line);
+    ensureWires(THREE, model);
+  }
   applyLook(THREE, model, st, near, far, pointPx);
+  if (stage) stageLook(THREE, model, st);
   applyLights(v, st, cam);
   if (v.grid) v.grid.visible = !!grid && lit;
+  if (stage) decorateStage(THREE, r, rec, st, lit);
   v.scene.environment = lit && st.light !== "flat" ? envTexture(THREE, r) : null;
   v.scene.environmentIntensity = (st.light === "soft" ? 1.0 : 0.55) * st.bright;
   r.setSize(w, h, false);
   // clearAlpha 0 is the mask pass: the same look over a see-through background.
   r.setClearColor(new THREE.Color(lookBackground(st)), clearAlpha);
   r.render(v.scene, cam);
+  // The renderer is shared: a stage node's shadow never stays on for the next node.
+  if (stage) r.shadowMap.enabled = false;
 }
 
 // ── drawing a node ──────────────────────────────────────────────────────────
@@ -897,7 +930,7 @@ function flush() {
 /** Glide the camera from where it was to the state's new angle. */
 export function animateView(node, fromAz, fromEl) {
   const rec = recOf(node);
-  const st = effectiveState(node);
+  const st = stateOf(rec);
   let reduce = false;
   try { reduce = matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (_e) { /* old browser */ }
   if (reduce) {
@@ -938,10 +971,12 @@ export function frameRect(cssW, cssH, st) {
 /** World units per CSS pixel at the target, for dragging the model around. */
 export function panScale(node, cssW, cssH) {
   const rec = _recs.get(node);
-  const st = effectiveState(node);
-  const f = frameRect(cssW, cssH, st);
+  const st = rec ? stateOf(rec) : effectiveState(node);
+  // Stage mode has no picture frame: the whole view is the frame.
+  const stage = !!rec?.opts?.stage;
+  const f = stage ? { x: 0, y: 0, w: cssW, h: cssH } : frameRect(cssW, cssH, st);
   const r = rec?.view?.radius || 1;
-  const A = st.w / st.h;
+  const A = stage ? cssW / Math.max(1, cssH) : st.w / st.h;
   let halfH;
   if (st.proj === "ortho") {
     halfH = (r * 1.08) / st.zoom;
@@ -993,7 +1028,8 @@ function drawNow(node) {
   if (cv.height !== bh) cv.height = bh;
   const ctx = cv.getContext("2d");
   if (!ctx) return;
-  const st = effectiveState(node);
+  const st = stateOf(rec);
+  const stage = !!rec.opts?.stage;
   const f = frameRect(cssW, cssH, st);
   const fr = { x: f.x * (bw / cssW), y: f.y * (bh / cssH), w: f.w * (bw / cssW), h: f.h * (bh / cssH) };
 
@@ -1002,7 +1038,19 @@ function drawNow(node) {
   if (!r) {
     ctx.fillStyle = lookBackground(st);
     ctx.fillRect(0, 0, bw, bh);
-    drawFrame(ctx, fr, bw, bh, sc, st);
+    if (!stage) drawFrame(ctx, fr, bw, bh, sc, st);
+    return;
+  }
+  if (stage) {
+    // Save 3D: the model where its file (and the Fix preview) puts it, over a
+    // floor at Y = 0, with the whole view as the frame.
+    placeStage(THREE, rec);
+    const sang = displayedAngles(rec, st);
+    const scam = cameraFor(THREE, rec.view, st, sang.az, sang.el, bw / bh, bw / bh, 1);
+    renderScene(THREE, r, rec, st, scam, bw, bh, { grid: false, pointPx: Math.max(1, 1.5 * sc), stage: true });
+    ctx.clearRect(0, 0, bw, bh);
+    ctx.drawImage(r.domElement, 0, 0, bw, bh, 0, 0, bw, bh);
+    if (st.marker !== false) drawMarker(ctx, scam, bw, bh, sc);
     return;
   }
   applyOrientation(THREE, rec, st);
@@ -1054,7 +1102,7 @@ export async function captureModel(node, value, state = null) {
   // Draw the state the CALLER named the picture after. Reading it again here,
   // after the awaits above, stored a view changed while the model was loading
   // under the old view's file name (measured: a Left picture saved as Front).
-  const st = state || effectiveState(node);
+  const st = state || stateOf(rec);
   const limit = Math.min(r.capabilities?.maxTextureSize || 4096, 16384);
   let w = st.w;
   let h = st.h;
