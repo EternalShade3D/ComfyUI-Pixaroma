@@ -68,22 +68,30 @@ function sortedEdgeKeys(wid, nw, counts, indices, alive) {
   return keys.subarray(0, e).sort();
 }
 
-/** Open edges (one polygon), broken edges (three or more), pieces, and the open edges as [a, b, a, b, ...]. */
+/** Open edges (one polygon), broken edges (three or more), pieces, the live polygons by corner count, and the open and
+ *  broken edges as [a, b, a, b, ...] (for the red and yellow dots and the Fill hole click). */
 export function census(wid, nw, counts, indices, alive) {
   const keys = sortedEdgeKeys(wid, nw, counts, indices, alive);
   let open = 0, broken = 0;
-  const openList = [];
+  const openList = [], brokenList = [];
   for (let i = 0; i < keys.length; ) {
     let j = i + 1;
     while (j < keys.length && keys[j] === keys[i]) j++;
     const n = j - i;
-    if (n === 1) { open++; openList.push(Math.floor(keys[i] / nw), keys[i] % nw); } else if (n > 2) broken++;
+    if (n === 1) { open++; openList.push(Math.floor(keys[i] / nw), keys[i] % nw); } else if (n > 2) { broken++; brokenList.push(Math.floor(keys[i] / nw), keys[i] % nw); }
     i = j;
   }
   const pc = pieces(wid, nw, counts, indices, alive);
-  let aliveN = 0;
-  for (let f = 0; f < counts.length; f++) if (alive[f]) aliveN++;
-  return { open, broken, pieces: pc.sizes.length, tiny: pc.sizes.filter((s) => s < 8).length, alive: aliveN, openEdges: Int32Array.from(openList), faceComp: pc.faceComp };
+  let aliveN = 0, triangles = 0, quads = 0, ngons = 0;
+  for (let f = 0; f < counts.length; f++) {
+    if (!alive[f]) continue;
+    aliveN++;
+    if (counts[f] === 3) triangles++; else if (counts[f] === 4) quads++; else ngons++;
+  }
+  return {
+    open, broken, pieces: pc.sizes.length, tiny: pc.sizes.filter((s) => s < 8).length, alive: aliveN, triangles, quads, ngons,
+    openEdges: Int32Array.from(openList), brokenEdges: Int32Array.from(brokenList), faceComp: pc.faceComp, pieceSizes: pc.sizes,
+  };
 }
 
 /** Connected pieces of live polygons (polygons sharing a welded point). -> { faceComp: Int32Array(F) (-1 dead), sizes } */
@@ -138,7 +146,7 @@ function splitAtRepeats(verts) {
  * quad-remesh.md #4). Only polygons touching an open edge's points are indexed, so a big closed-ish model stays fast.
  * -> { loops: number[][], stray: open half-edges in no closed loop }
  */
-export function boundaryLoops(wid, nw, counts, indices, alive, maxLen) {
+export function boundaryLoops(wid, nw, counts, indices, alive, maxLen, accept = null) {
   const keys = sortedEdgeKeys(wid, nw, counts, indices, alive);
   const openSet = new Set();
   const onBorder = new Uint8Array(nw);
@@ -166,6 +174,9 @@ export function boundaryLoops(wid, nw, counts, indices, alive, maxLen) {
   const visited = new Set(), failed = new Set(), loops = [];
   for (const start of isOpen) {
     if (visited.has(start) || failed.has(start)) continue;
+    // accept(a, b): only walk from these open edges (one hole under a click, the holes inside a selection), so a long
+    // open border elsewhere is not walked 600 steps from each of its edges.
+    if (accept && !accept(Math.floor(start / nw), start % nw)) continue;
     const walk = [], seenHere = new Set();
     let h = start, closed = false;
     for (let step = 0; step <= maxLen; step++) {
