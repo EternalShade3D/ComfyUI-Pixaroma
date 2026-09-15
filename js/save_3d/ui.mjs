@@ -28,9 +28,11 @@ export const VP_MIN = 160;
 // offsets are PER RENDERER, read live, and are MEASURED against the dots: the
 // band's middle sits on the middle of the two input rows. Classic, measured
 // 2026-09-15: the root starts 56 below the node top and the rows are at 14 and
-// 34, so the 34 tall band starts at 56 - 49 = 7 and its middle is at 24.
+// 34, so the 34 tall band starts at 56 - 49 = 7 and its middle is at 24. Nodes
+// 2.0, measured the same day against the DOM rows: -34 put the band 7 px low
+// (middle 59 against the rows' 52), so -41.
 const BAND_TOP = -49;
-const BAND_TOP_VUE = -34;
+const BAND_TOP_VUE = -41;
 const BAND_SIDE = 84;
 
 const AXIS_COLOR = { x: "#f0605a", y: "#7fcf3a", z: "#4d9bff" };
