@@ -37,6 +37,7 @@ MIRROR_FAR_SHARE = 0.001  # (the gun: median 0.13 mm, nothing beyond 1 mm; a 0.8
 FLAT = 0.01               # a triangle this flat (height / longest edge) is a sliver
 FILL_MAX = 600            # the longest hole loop that is walked
 FLIP_SLIVERS = True       # step7: never worse, and better on a model Hard Surface sharpened
+OFF_SAMPLES = 60000       # points spread over the new faces to measure how far they sit off the input
 
 
 class EngineMissing(RuntimeError):
@@ -583,14 +584,25 @@ def transfer(out, V_in, F_in, colours=None, uvs=None, texture=None, tri_groups=N
     return new_colours, groups
 
 
-def off_input(out, V_in, F_in):
-    """How far the new vertices sit from the input surface, in mm on a 100 mm print."""
+def off_input(out, V_in, F_in, seed=3):
+    """How far the new SURFACE sits from the input surface, in mm on a 100 mm print, measured at OFF_SAMPLES
+    points spread over the new faces by area. Not at the corners: the engine puts those on the input, so a
+    corner measure reads near zero while the faces between them cut across (harness A12). A mesh with no
+    area to spread points over is measured at its corners."""
     V = np.asarray(out.vertices, np.float64)
     V_in = np.asarray(V_in, np.float64)
     F_in = np.asarray(F_in, np.int64)
     used = V_in[np.unique(F_in)]
     scale = PRINT_MM / float(max((used.max(0) - used.min(0)).max(), 1e-12))
-    _p, _t, d = closest_points(V, V_in, F_in)
+    pts = V
+    if OFF_SAMPLES > 0 and len(np.asarray(out.counts)):
+        _v, T, _c = m3.triangulate(out)
+        T = np.asarray(T, np.int64)
+        area = np.linalg.norm(np.cross(V[T[:, 1]] - V[T[:, 0]], V[T[:, 2]] - V[T[:, 0]]), axis=1)
+        T = T[np.isfinite(area) & (area > 0)]
+        if len(T):
+            pts = surface_samples(V, T, OFF_SAMPLES, seed)
+    _p, _t, d = closest_points(pts, V_in, F_in)
     d = d[np.isfinite(d)] * scale
     return {"mean_mm": round(float(d.mean()), 4) if len(d) else 0.0,
             "p95_mm": round(float(np.percentile(d, 95)), 4) if len(d) else 0.0}
