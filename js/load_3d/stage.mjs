@@ -17,6 +17,105 @@ const AXES = [
 ];
 const IDENTITY_ROWS = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const GOLDEN = 137.508;
+// Edges that bend more than this stay sharp when an OBJ is shaded smooth: the default of Blender's Shade Auto Smooth.
+export const STAGE_CREASE_DEG = 30;
+
+/**
+ * Smooth shading for an OBJ that carries no normals of its own, as every file the 3D nodes write. three's
+ * OBJLoader gives such a file one flat normal per triangle, so a quad model looked faceted beside an AI model whose
+ * GLB brings smooth normals, and the nodes' results looked worse than they are. Each corner now takes the
+ * area-weighted normals of the triangles around its point that bend less than `creaseDeg` from its own triangle:
+ * rounded surfaces shade smooth, hard edges stay sharp. Points are matched by their exact position bits, which is
+ * safe because OBJLoader copies every corner of one OBJ vertex from the same parsed numbers. Each mesh (one per OBJ
+ * group) is smoothed on its own.
+ * -> the number of meshes given new normals
+ */
+export function objCreasedNormals(THREE, object, creaseDeg = STAGE_CREASE_DEG) {
+  const cosLimit = Math.cos((creaseDeg * Math.PI) / 180);
+  let done = 0;
+  object.traverse((o) => {
+    const g = o.isMesh ? o.geometry : null;
+    const pos = g?.getAttribute?.("position");
+    if (!pos || g.index || pos.itemSize !== 3 || !(pos.array instanceof Float32Array)) return;
+    const n = pos.count - (pos.count % 3);
+    if (n < 3) return;
+    const P = pos.array;
+    const bits = new Uint32Array(P.buffer, P.byteOffset, pos.count * 3);
+    const tris = n / 3;
+    const raw = new Float64Array(tris * 3);
+    const unit = new Float64Array(tris * 3);
+    for (let t = 0; t < tris; t++) {
+      const a = t * 9;
+      const ux = P[a + 3] - P[a], uy = P[a + 4] - P[a + 1], uz = P[a + 5] - P[a + 2];
+      const vx = P[a + 6] - P[a], vy = P[a + 7] - P[a + 1], vz = P[a + 8] - P[a + 2];
+      const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+      const k = t * 3;
+      raw[k] = cx;
+      raw[k + 1] = cy;
+      raw[k + 2] = cz;
+      const len = Math.hypot(cx, cy, cz);
+      if (len > 0) {
+        unit[k] = cx / len;
+        unit[k + 1] = cy / len;
+        unit[k + 2] = cz / len;
+      }
+    }
+    // One id per point, from an open-addressing table over the position bits.
+    let size = 1;
+    while (size < n * 2) size *= 2;
+    const table = new Int32Array(size).fill(-1);
+    const pid = new Int32Array(n);
+    const first = new Int32Array(n);
+    let points = 0;
+    for (let i = 0; i < n; i++) {
+      const b0 = bits[i * 3], b1 = bits[i * 3 + 1], b2 = bits[i * 3 + 2];
+      let h = (Math.imul(b0, 0x9e3779b1) ^ Math.imul(b1, 0x85ebca77) ^ Math.imul(b2, 0xc2b2ae3d)) & (size - 1);
+      for (;;) {
+        const p = table[h];
+        if (p < 0) {
+          table[h] = points;
+          first[points] = i;
+          pid[i] = points++;
+          break;
+        }
+        const f = first[p] * 3;
+        if (bits[f] === b0 && bits[f + 1] === b1 && bits[f + 2] === b2) {
+          pid[i] = p;
+          break;
+        }
+        h = (h + 1) & (size - 1);
+      }
+    }
+    // The triangles around each point.
+    const start = new Int32Array(points + 1);
+    for (let i = 0; i < n; i++) start[pid[i] + 1]++;
+    for (let p = 0; p < points; p++) start[p + 1] += start[p];
+    const next = start.slice(0, points);
+    const around = new Int32Array(n);
+    for (let i = 0; i < n; i++) around[next[pid[i]]++] = (i / 3) | 0;
+    const out = new Float32Array(pos.count * 3);
+    for (let i = 0; i < n; i++) {
+      const k = ((i / 3) | 0) * 3;
+      const tx = unit[k], ty = unit[k + 1], tz = unit[k + 2];
+      let sx = 0, sy = 0, sz = 0;
+      for (let j = start[pid[i]], end = start[pid[i] + 1]; j < end; j++) {
+        const u = around[j] * 3;
+        if (unit[u] * tx + unit[u + 1] * ty + unit[u + 2] * tz >= cosLimit) {
+          sx += raw[u];
+          sy += raw[u + 1];
+          sz += raw[u + 2];
+        }
+      }
+      const len = Math.hypot(sx, sy, sz);
+      out[i * 3] = len > 0 ? sx / len : tx;
+      out[i * 3 + 1] = len > 0 ? sy / len : ty;
+      out[i * 3 + 2] = len > 0 ? sz / len : tz;
+    }
+    g.setAttribute("normal", new THREE.BufferAttribute(out, 3));
+    done++;
+  });
+  return done;
+}
 
 /**
  * The OBJ's own polygon edges (a quad stays a quad), for the Wire look.

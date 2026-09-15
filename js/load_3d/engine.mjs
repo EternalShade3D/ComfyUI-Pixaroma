@@ -18,7 +18,9 @@ import { NONE, splitModelName, fmtBytes, fmtInt } from "./core.mjs";
 import { effectiveState } from "./size.mjs";
 // Save 3D Pixaroma draws through this same renderer in STAGE mode (stage.mjs);
 // a node attached without options never reaches it.
-import { placeStage, decorateStage, stageLook, ensureStageWires, drawMarker, objPolygonEdges } from "./stage.mjs";
+import {
+  placeStage, decorateStage, stageLook, ensureStageWires, drawMarker, objPolygonEdges, objCreasedNormals,
+} from "./stage.mjs";
 
 const VENDOR = "/pixaroma/vendor/three"; // a BARE base, wrapped at each use (hosted-urls.md #4)
 const vendor = (tail) => pixApiUrl(VENDOR + tail);
@@ -296,6 +298,9 @@ async function parseModel(THREE, p, buf, edges = false) {
         // No .mtl next to the model: it simply shows in plain grey.
       }
       object = loader.parse(text);
+      // Stage mode: an OBJ with no normals of its own (every file the 3D nodes write) shades smooth with crisp
+      // creases, as its GLB input does, instead of OBJLoader's one flat normal per triangle. Load 3D never gets here.
+      if (edges && !/^[ \t]*vn[ \t]/m.test(text)) objCreasedNormals(THREE, object);
       break;
     }
     case "fbx": {
