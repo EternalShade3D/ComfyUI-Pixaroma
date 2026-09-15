@@ -674,6 +674,10 @@ def quad_remesh(poly, params, work_dir, cancel=None, uvs=None, texture=None):
         tri_groups = np.repeat(np.asarray(poly.groups, np.int32), per_face)[good]
     # The engine and the hole test need ONE point per place (a seam must not read as an open edge).
     V, F, collapsed = prepare_triangles(V0, T0f)
+    if not len(F):
+        # Every face collapsed into a line or a point once its points were welded (harness A14).
+        raise ValueError("Quad Remesh Pixaroma: every face of the model has collapsed into a line or a point, "
+                         "so there is nothing to remesh.")
     flips = 0
     if FLIP_SLIVERS:
         F, flips, _left = flip_slivers(V, F)
