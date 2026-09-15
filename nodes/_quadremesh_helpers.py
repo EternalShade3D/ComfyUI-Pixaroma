@@ -4,7 +4,9 @@ No torch and no ComfyUI imports, so D:\\Claude Tests\\_quad_remesh_test.py (sect
 """
 import json
 
-DENSITIES = (5000, 10000, 25000, 50000, 100000)
+# 200,000 for characters and small round details (a robot's emblem rings and fingers were blocky at 100,000:
+# quad_remesh_proto/README.txt step11_models). Keep core.mjs in step.
+DENSITIES = (5000, 10000, 25000, 50000, 100000, 200000)
 SYMMETRY = ("off", "auto", "x", "y", "z")
 # Every key here changes the output, so all of them go into the prompt; the viewer's settings (Before or
 # Quads, looks, views, light) stay on the node and never reach Python, so looking around never re-runs it.

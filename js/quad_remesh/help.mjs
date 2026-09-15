@@ -22,8 +22,10 @@ export const QUAD_REMESH_HELP = {
     {
       heading: "The controls",
       defs: [
-        ["Quads", "How many quads to lay: 5K, 10K, 25K, 50K or 100K. 100K, the default, keeps small slots, buttons "
-          + "and panel lines crisp. Fewer quads make a lighter model that rounds off small details, and run faster."],
+        ["Quads", "How many quads to lay: 5K, 10K, 25K, 50K, 100K or 200K. 100K, the default, keeps the slots, "
+          + "buttons and panel lines of a hard-surface model crisp. A character, or any model with small round "
+          + "details such as fingers or rings, needs 200K, which takes about twice as long. Fewer quads make a "
+          + "lighter model that rounds off small details, and run faster."],
         ["Symmetry", "Auto mirrors the model when both sides match closely and leaves it whole when they do not. "
           + "X, Y and Z mirror across that axis anyway (the axes of the marker on the view). Off never mirrors."],
         ["Follow crisp edges", "Keeps edge loops on the model's sharp edges, so slots, buttons and panel lines stay "

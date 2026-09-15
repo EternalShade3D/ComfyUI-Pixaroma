@@ -21,7 +21,8 @@ export const DENSITIES = [
   { id: 10000, label: "10K", tip: "10,000 quads" },
   { id: 25000, label: "25K", tip: "25,000 quads: lighter, and small details come out rough" },
   { id: 50000, label: "50K", tip: "50,000 quads" },
-  { id: 100000, label: "100K", tip: "100,000 quads, the default: the cleanest grid and the finest detail, and the longest pause" },
+  { id: 100000, label: "100K", tip: "100,000 quads, the default: crisp slots, buttons and panel lines on hard-surface models" },
+  { id: 200000, label: "200K", tip: "200,000 quads: for characters and small round details such as fingers and rings, about twice as long as 100K" },
 ];
 
 export const SYMMETRIES = [
