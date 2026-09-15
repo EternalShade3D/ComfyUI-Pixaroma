@@ -200,18 +200,29 @@ def face_summary(mesh):
 
 def weld_ids(vertices, rel_eps=WELD_REL):
     """One id per place: vertices at the same position (a UV seam, or an STL that
-    stores every triangle's corners separately) share an id. -> (ids, id count)."""
+    stores every triangle's corners separately) share an id. -> (ids, id count).
+    A vertex that is not a real number gets an id of its own after the others: left
+    in, one NaN made the box NaN and every vertex landed on ONE id (found building
+    Hard Surface, 2026-09-15; D:\\Claude Tests\\_hard_surface_test.py A8)."""
     V = np.asarray(vertices, np.float64).reshape(-1, 3)
     if len(V) == 0:
         return np.zeros(0, np.int64), 0
-    lo = V.min(0)
-    diag = float(np.linalg.norm(V.max(0) - lo)) or 1.0
-    q = np.floor((V - lo) / (diag * rel_eps) + 0.5).astype(np.int64)
-    np.clip(q, 0, (1 << 20) - 1, out=q)
-    key = (q[:, 0] << 40) | (q[:, 1] << 20) | q[:, 2]
-    _, inv = np.unique(key, return_inverse=True)
-    inv = inv.reshape(-1).astype(np.int64)
-    return inv, int(inv.max()) + 1
+    finite = np.isfinite(V).all(axis=1)
+    ids = np.empty(len(V), np.int64)
+    count = 0
+    if finite.any():
+        P = V[finite]
+        lo = P.min(0)
+        diag = float(np.linalg.norm(P.max(0) - lo)) or 1.0
+        q = np.floor((P - lo) / (diag * rel_eps) + 0.5).astype(np.int64)
+        np.clip(q, 0, (1 << 20) - 1, out=q)
+        key = (q[:, 0] << 40) | (q[:, 1] << 20) | q[:, 2]
+        _, inv = np.unique(key, return_inverse=True)
+        ids[finite] = inv.reshape(-1)
+        count = int(inv.max()) + 1
+    bad = np.nonzero(~finite)[0]
+    ids[bad] = count + np.arange(len(bad))
+    return ids, count + len(bad)
 
 
 def edge_census(mesh, weld=True):
