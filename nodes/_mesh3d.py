@@ -1,7 +1,7 @@
-"""The shared polygon mesh of the Pixaroma 3D nodes (Save 3D, Hard Surface, Quad Remesh).
+"""The shared polygon mesh of the Pixaroma 3D nodes (Save 3D, Edit 3D).
 
 It keeps what the triangle-only paths lose: quads and other polygons, face groups
-(panels or materials) and vertex colours, so the three nodes can hand a model to
+(panels or materials) and vertex colours, so the nodes can hand a model to
 each other through a model_3d OBJ without losing any of it. Core's OBJ reader
 fan-triangulates polygons and so does trimesh, so neither may touch a quad model.
 
@@ -20,8 +20,8 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 # Points closer than this share of the bounding-box diagonal are one point when
-# edges are counted. The same rule as Mesh Repair's census (weld_ids), so both
-# nodes report the same open and broken edges for the same model.
+# edges are counted. The same rule as _mesh_repair_census.weld_ids, so every
+# count reports the same open and broken edges for the same model.
 WELD_REL = 1e-6
 STL_RECORD = np.dtype([("normal", "<f4", (3,)), ("points", "<f4", (9,)), ("attr", "<u2")])
 
@@ -336,7 +336,7 @@ def placement_check(vertices, tolerance=0.005):
 
 
 def y_up_to_z_up(vertices):
-    """(x, y, z) -> (x, -z, y): the turn Mesh Repair's stl uses. A turn, not a
+    """(x, y, z) -> (x, -z, y): the turn every STL written here uses. A turn, not a
     mirror, so every face keeps pointing outward."""
     P = np.asarray(vertices, np.float64).reshape(-1, 3)
     return np.stack([P[:, 0], -P[:, 2], P[:, 1]], axis=1)

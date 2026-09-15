@@ -1,4 +1,7 @@
-"""Mesh Repair Pixaroma - rebuild a broken mesh as one closed solid.
+"""Make solid - rebuild a broken mesh as one closed solid.
+
+Built for the Mesh Repair node, which Edit 3D replaced on 2026-09-15: Edit 3D's Make solid button calls
+solid_rebuild, and its Quads button uses closest_points and transfer_colours (mesh-repair.md #2 and #6).
 
 Why this exists (measured 2026-09-14, output/claude_output/mesh_repair_research):
 Pixal3D and Trellis 2 models come out of core Remesh Mesh (udf mode) as a HOLLOW

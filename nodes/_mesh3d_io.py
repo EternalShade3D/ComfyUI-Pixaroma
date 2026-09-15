@@ -1,4 +1,4 @@
-"""The ComfyUI side of the shared 3D mesh, for Save 3D, Hard Surface and Quad Remesh Pixaroma.
+"""The ComfyUI side of the shared 3D mesh, for Save 3D and Edit 3D Pixaroma.
 
 _mesh3d.py is the pure geometry. This file turns ComfyUI's 3D inputs into it and
 back again, keeping what each source has:

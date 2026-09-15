@@ -1,4 +1,5 @@
-"""Mesh Repair Pixaroma - what is wrong with a mesh, and a cut through it.
+"""What is wrong with a mesh, and a cut through it (built for the Mesh Repair node, replaced by Edit 3D on
+2026-09-15; _mesh_repair_solid.py still imports weld_ids from here).
 
 Pure numpy + scipy, so the harness can run it on any file. Every count here is
 taken AFTER merging points that sit in the same place: a GLB duplicates points

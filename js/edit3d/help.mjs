@@ -137,6 +137,7 @@ export const EDIT3D_HELP = {
         "The editor keeps the colour texture of a model. A PBR model's other maps (normal, roughness, metal) are not kept, so an edited PBR model looks a little flatter in a renderer that uses them.",
         "Quads, Reduce polygons, Make solid and Mirror run through ComfyUI's queue: while a generation is running they wait for it, and the page pauses for a few seconds while Quads works.",
         "When the model wired in changes (a new generation, say), the node passes it on unedited and says so: open the editor and edit the new model.",
+        "Close cracks can leave a few broken edges, where three faces now share one edge. For 3D printing, finish with Make solid, which always gives one closed solid.",
         "FBX and PLY files open in the editor, and need one Save before the node can hand them on.",
         "Saved edits live in input/pixaroma_edit3d. Models above about 1.5 million triangles work, but slowly: Reduce polygons first.",
       ],

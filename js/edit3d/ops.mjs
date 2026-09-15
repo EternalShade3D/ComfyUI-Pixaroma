@@ -56,6 +56,11 @@ export class Ops {
     ed.busy = true;
     ed.ui.setBusy(busy || "Working...");
     await new Promise((r) => setTimeout(r, 30)); // so the line paints before a long edit
+    // Closed in those 30 ms (Close, or the node removed): cleanup has already let the model go.
+    if (!ed.isOpen() || !ed.model) {
+      ed.busy = false;
+      return false;
+    }
     const m = ed.model;
     const snap = m.snapshot(kind);
     let label = false, failed = false;

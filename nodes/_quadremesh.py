@@ -1,4 +1,7 @@
-"""Quad Remesh Pixaroma - pure geometry around the Instant Meshes engine.
+"""Quads for Edit 3D Pixaroma - pure geometry around the Instant Meshes engine.
+
+Built for the Quad Remesh node, which Edit 3D replaced on 2026-09-15; its Quads button calls quad_remesh here
+(.claude/patterns/quad-remesh.md #1 to #6 still hold for this file).
 
 No torch and no ComfyUI imports: D:\\Claude Tests\\_quad_remesh_test.py (section A) runs it directly.
 Every step here was measured on the Ep34 gun first, with renders
@@ -48,7 +51,7 @@ class EngineMissing(RuntimeError):
 
 
 ENGINE_MESSAGE = (
-    "[Pixaroma] Quad Remesh Pixaroma: the Instant Meshes engine (the pyinstantmeshes package) is not installed, "
+    "[Pixaroma] Edit 3D Pixaroma: the Instant Meshes engine (the pyinstantmeshes package) is not installed, "
     "and it is needed to lay the quads.\n"
     "   Updating the Pixaroma pack with ComfyUI Manager installs it. Or install it yourself:\n"
     "     Portable ComfyUI (Windows) - run this in your ComfyUI folder\n"
@@ -665,7 +668,7 @@ def quad_remesh(poly, params, work_dir, cancel=None, uvs=None, texture=None):
     good = np.isfinite(V0).all(1)[T0].all(1) if len(T0) else np.zeros(0, bool)
     T0f = T0[good]
     if not len(T0f):
-        raise ValueError("Quad Remesh Pixaroma: the model has no faces with real positions, so there is nothing to remesh.")
+        raise ValueError("Quads: the model has no faces with real positions, so there is nothing to remesh.")
     # Colours, uvs and groups are read from the UNWELDED triangles: welding merges a texture seam's two copies,
     # and a triangle across the seam would then blend uvs from two different charts.
     tri_groups = None
@@ -676,7 +679,7 @@ def quad_remesh(poly, params, work_dir, cancel=None, uvs=None, texture=None):
     V, F, collapsed = prepare_triangles(V0, T0f)
     if not len(F):
         # Every face collapsed into a line or a point once its points were welded (harness A14).
-        raise ValueError("Quad Remesh Pixaroma: every face of the model has collapsed into a line or a point, "
+        raise ValueError("Quads: every face of the model has collapsed into a line or a point, "
                          "so there is nothing to remesh.")
     flips = 0
     if FLIP_SLIVERS:

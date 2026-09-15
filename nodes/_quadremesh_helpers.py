@@ -1,5 +1,7 @@
 """Quad Remesh Pixaroma - pure helpers: the state blob and the report text.
 
+The node was replaced by Edit 3D on 2026-09-15; Edit 3D still reads SYMMETRY from here.
+
 No torch and no ComfyUI imports, so D:\\Claude Tests\\_quad_remesh_test.py (section B) checks them directly.
 """
 import json

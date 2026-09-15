@@ -8,7 +8,7 @@ import re
 FORMATS = ("auto", "obj", "glb", "stl")
 MODES = ("preview", "save")
 UPS = ("auto", "y", "z")
-# The same choices as Mesh Repair's stl output ("model" keeps the model's own units).
+# The print sizes an STL can be written at ("model" keeps the model's own units).
 STL_SIZES = ("model", 50, 100, 150, 200, 300)
 MAX_TURNS = 64
 NAME_MAX = 200

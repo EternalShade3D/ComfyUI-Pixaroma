@@ -232,7 +232,7 @@ class PixaromaSave3D:
             "optional": {
                 "mesh": ("MESH", {
                     "tooltip": "A mesh from any mesh node, for example the Pixal3D or Trellis 2 nodes or "
-                               "Mesh Repair Pixaroma. When a model_3d is wired in as well, the mesh is used.",
+                               "Edit 3D Pixaroma. When a model_3d is wired in as well, the mesh is used.",
                 }),
                 "model_3d": (mio.FILE_TYPES, {
                     "tooltip": "A 3D model file, for example from Load 3D Pixaroma. GLB, GLTF, OBJ and STL "
