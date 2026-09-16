@@ -51,6 +51,9 @@ ${E} .pix-e3d-check-row.ok{border-left-color:#3ec371;}
 ${E} .pix-e3d-check-row.warn{border-left-color:#e0a33a;}
 ${E} .pix-e3d-check-row.warn b{color:#e0a33a;}
 ${E} .pix-e3d-check-row.dim{color:#777;}
+${E} .pix-e3d-check-row b{flex:1 1 auto;}
+${E} .pix-e3d-fix{flex:0 0 auto;background:transparent;border:1px solid #e0a33a;color:#e0a33a;font:10px "Segoe UI",system-ui,sans-serif;padding:1px 8px;border-radius:9px;cursor:pointer;transition:all .12s;}
+${E} .pix-e3d-fix:hover{background:${A};border-color:${A};color:#fff;}
 ${E} .pix-e3d-check-row:hover{border-color:${A};}
 // Two classes on the one element, so these beat the .pix-e3d-row rules further down whatever the order.
 ${E} .pix-e3d-row.pix-e3d-symrow{margin-bottom:8px;}

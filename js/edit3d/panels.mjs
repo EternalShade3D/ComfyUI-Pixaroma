@@ -162,26 +162,42 @@ export function buildPanels(ed) {
         return;
       }
       const s = m.stats;
+      // Every amber row carries the button that fixes it, so the list is not a diagnosis the reader has to act on.
+      const r = rims(m), strays = Math.max(0, s.open - r.edges);
+      const fixFill = {
+        name: "Fill holes",
+        help: "Closes every hole that has a rim, whatever its size, and fills again while it keeps finding them. A big opening is closed with a flat cap, so look at it afterwards.",
+        run: () => { ed.opts.holeSize = 100000; syncSegKey("holeSize"); ed.ops.fillHoles(); },
+      };
+      const fixSolid = {
+        name: "Make solid",
+        help: "Rebuilds the model as one closed solid. It is the only thing that clears broken edges and the open edges that have no rim to walk. It softens small details and drops quads and the texture, so keep it for last. Measured on a cleaned Ep34 gun: 35 open edges and 14 broken edges to zero, one piece, in 16 seconds.",
+        run: () => ed.heavy("solid"),
+      };
+      const fixLoose = {
+        name: "Remove loose bits",
+        help: "Removes every separate piece smaller than 8 faces.",
+        run: () => ed.ops.removeLoose(),
+      };
       const rows = [
         ["Faces", facesText({ triangles: s.triangles, quads: s.quads, ngons: s.ngons }), "",
-          "How many polygons the model has. Quads and triangles are counted apart. Quads and Reduce polygons change this."],
+          "How many polygons the model has. Quads and triangles are counted apart. Quads and Reduce polygons change this.", null],
         ["Pieces", fmtInt(s.pieces), s.tiny ? "warn" : "ok", s.tiny
           ? `${fmtInt(s.tiny)} of them are specks of under 8 faces. Remove loose bits clears them.`
-          : "Every separate piece is big enough to be a real part of the model."],
-        ["Holes", (() => { const r = rims(m); return r.n > 0 ? fmtInt(r.n) : s.open ? "none to fill" : "none"; })(), s.open ? "warn" : "ok", (() => {
-          if (!s.open) return "The surface is closed: no open edges.";
-          const r = rims(m), strays = Math.max(0, s.open - r.edges);
-          return `${fmtInt(s.open)} open edges in all, forming ${fmtInt(Math.max(0, r.n))} rim${r.n === 1 ? "" : "s"} that Fill holes can close at the size beside it`
-            + `${strays ? `, plus ${fmtInt(strays)} open edges that form no rim at all and need Make solid` : ""}.`
-            + " Removing the skin hidden inside opens the seam where the two skins met, so this goes UP after a clean up, and that is normal.";
-        })()],
+          : "Every separate piece is big enough to be a real part of the model.", s.tiny ? fixLoose : null],
+        ["Holes", r.n > 0 ? fmtInt(r.n) : s.open ? "none to fill" : "none", s.open ? "warn" : "ok",
+          !s.open ? "The surface is closed: no open edges."
+            : `${fmtInt(s.open)} open edges in all, forming ${fmtInt(Math.max(0, r.n))} rim${r.n === 1 ? "" : "s"} that Fill holes can close at the size beside it`
+              + `${strays ? `, plus ${fmtInt(strays)} open edges that form no rim at all and need Make solid` : ""}.`
+              + " Removing the skin hidden inside opens the seam where the two skins met, so this goes UP after a clean up, and that is normal.",
+          r.n > 0 ? fixFill : s.open ? fixSolid : null],
         ["Broken edges", fmtInt(s.broken), s.broken ? "warn" : "ok", s.broken
-          ? "More than two faces share an edge, which a 3D printer cannot read. Make solid rebuilds the model as one clean solid."
-          : "No edge is shared by more than two faces."],
+          ? "More than two faces share an edge, which a 3D printer cannot read and no hole filling can mend. Make solid rebuilds the model as one clean solid."
+          : "No edge is shared by more than two faces.", s.broken ? fixSolid : null],
       ];
-      if (s.hidden) rows.push(["Hidden", fmtInt(s.hidden) + " faces", "", "Faces you hid are still there and are still saved. Show all brings them back. (Alt+H)"]);
+      if (s.hidden) rows.push(["Hidden", fmtInt(s.hidden) + " faces", "", "Faces you hid are still there and are still saved. Show all brings them back. (Alt+H)", null]);
       box.textContent = "";
-      for (const [label, value, state, hint] of rows) {
+      for (const [label, value, state, hint, fix] of rows) {
         const row = document.createElement("div");
         row.className = "pix-e3d-check-row" + (state ? " " + state : "");
         row.dataset.name = label;
@@ -191,6 +207,16 @@ export function buildPanels(ed) {
         const v = document.createElement("b");
         v.textContent = value;
         row.append(a, v);
+        if (fix) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "pix-e3d-fix";
+          btn.textContent = "Fix";
+          btn.dataset.name = fix.name;
+          btn.dataset.help = fix.help;
+          btn.addEventListener("click", (e) => { e.stopPropagation(); fix.run(); });
+          row.appendChild(btn);
+        }
         box.appendChild(row);
       }
     },
