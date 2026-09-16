@@ -1025,6 +1025,7 @@ const HELP = {
         bullets: [
           "Wire any IMAGE source into `image`.",
           "Leave `save_mode` on `preview` while iterating; switch to `save` for automatic saves.",
+          "In `preview` mode the node does not force the rest of the workflow to run again: when nothing before it has changed, ComfyUI reuses what the nodes after it made, so changing a late setting and pressing Run only redoes the steps after that setting. If its preview file is deleted, the next Run makes it again.",
           "Use `filename_prefix` to control the output name. Supports subfolders with `/`, date tokens like `%date:yyyy-MM-dd%`, and node references like `%Seed Pixaroma.seed%` that print another node's value into the name (in `save` mode, and the Save Disk / Save Output buttons).",
           "Click a thumbnail to expand it, then use the arrow keys to browse the batch.",
         ],

@@ -1,5 +1,6 @@
 import os
 import uuid
+from collections import deque
 
 import folder_paths
 import numpy as np
@@ -20,6 +21,41 @@ def _tensor_to_pil(tensor):
     """Convert a HxWxC float [0,1] tensor frame to a PIL.Image."""
     arr = (tensor.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
     return Image.fromarray(arr)
+
+
+# Preview mode caching (2026-09-16). IS_CHANGED used to return NaN in both modes,
+# and because a node's cache signature includes every ancestor's IS_CHANGED, that
+# made EVERYTHING wired after an inline preview re-run on every Run (measured on
+# the Ep34 multi-view 3D workflow: changing only the triangle count rebuilt the
+# whole model). The NaN was there so a preview whose file was deleted comes back
+# instead of pointing at a missing file. Preview mode now answers "unchanged"
+# while every temp file this node wrote still exists, and moves to a new answer
+# only when one has gone missing, so a cached Run shows the same frames (ComfyUI
+# re-sends a cached node's ui) and a missing file still forces a re-save.
+# Save mode keeps NaN: "every Run writes a file" is deliberate
+# (.claude/patterns/preview-image.md, the NaN section).
+_PREVIEW_RUNS = {}       # node id -> deque of tuples: the temp paths each run wrote
+_PREVIEW_GENERATION = {}  # node id -> bumped whenever a written file is found missing
+_PREVIEW_RUNS_KEPT = 32
+
+
+def _preview_mode_token(unique_id):
+    key = str(unique_id)
+    runs = _PREVIEW_RUNS.get(key, ())
+    if any(not os.path.exists(path) for run in runs for path in run):
+        _PREVIEW_GENERATION[key] = _PREVIEW_GENERATION.get(key, 0) + 1
+    return "pixaroma-preview-{}".format(_PREVIEW_GENERATION.get(key, 0))
+
+
+def _remember_preview_run(unique_id, paths):
+    key = str(unique_id)
+    runs = _PREVIEW_RUNS.setdefault(key, deque(maxlen=_PREVIEW_RUNS_KEPT))
+    # Forget runs whose files are gone (the Run that re-saves them is this one),
+    # or one deleted file would keep every later Run from caching.
+    kept = [run for run in runs if all(os.path.exists(path) for path in run)]
+    runs.clear()
+    runs.extend(kept)
+    runs.append(tuple(paths))
 
 
 class PixaromaPreview:
@@ -100,12 +136,14 @@ class PixaromaPreview:
     CATEGORY = "👑 Pixaroma/🖼️ Image"
 
     @classmethod
-    def IS_CHANGED(cls, **kwargs):
-        # Always re-execute so each Run re-saves the file and emits fresh
-        # frame URLs. Without this, if the user deletes the saved file on
-        # disk and clicks Run, ComfyUI's input-hash cache skips execution
-        # and the preview shows stale URLs pointing to the deleted file.
-        return float("nan")
+    def IS_CHANGED(cls, save_mode=None, unique_id=None, **kwargs):
+        # Save mode (or a save_mode wired in, which reads as None here): always
+        # re-execute, so every Run writes a file and a deleted one comes back.
+        if save_mode != "preview":
+            return float("nan")
+        # Preview mode: unchanged while this node's temp files still exist, so
+        # the nodes wired after it can come from the cache. See _preview_mode_token.
+        return _preview_mode_token(unique_id)
 
     def preview(
         self,
@@ -167,15 +205,19 @@ class PixaromaPreview:
             os.makedirs(temp_dir, exist_ok=True)
             pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo,
                                          parameters=a1111)
+            written = []
             for tensor in image:
                 pil = _tensor_to_pil(tensor)
                 fname = f"pixaroma_preview_{uuid.uuid4().hex}.png"
-                pil.save(os.path.join(temp_dir, fname), "PNG", pnginfo=pnginfo)
+                path = os.path.join(temp_dir, fname)
+                pil.save(path, "PNG", pnginfo=pnginfo)
+                written.append(path)
                 results.append({
                     "filename": fname,
                     "subfolder": "",
                     "type": "temp",
                 })
+            _remember_preview_run(unique_id, written)
 
         # Hand the EXECUTION-time prompt + workflow to the frontend so the
         # Save Disk / Save Output buttons embed the seed that ACTUALLY produced
