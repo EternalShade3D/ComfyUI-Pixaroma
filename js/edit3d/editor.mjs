@@ -385,7 +385,7 @@ class Edit3DEditor {
     const tools = { b: "select", d: "erase", l: "lasso", p: "panel", i: "piece", m: "move", e: "edge", o: "hole" };
     // Sculpt mode has its own letters, the way a sculpting program does: the same key means the brush there and the
     // tool in Polygons. Nothing here may collide with the view keys (1 3 7 0 F) or with H, X, A and the brackets.
-    const brushKeys = { s: "smooth", d: "spike", v: "even", l: "simplify", t: "flatten", c: "scrape", a: "fill", n: "pinch", r: "crease", i: "inflate", b: "buildup", g: "grab", p: "protect" };
+    const brushKeys = { s: "smooth", d: "spike", v: "even", l: "simplify", w: "detail", t: "flatten", c: "scrape", a: "fill", n: "pinch", r: "crease", i: "inflate", b: "buildup", g: "grab", p: "protect" };
     const views = { 1: "front", 3: "right", 7: "top", 0: "q", f: "fit" };
     if (this.prefs.mode === "sculpt" && brushKeys[k]) this.setBrush(brushKeys[k]);
     else if (tools[k]) this.setTool(tools[k]);

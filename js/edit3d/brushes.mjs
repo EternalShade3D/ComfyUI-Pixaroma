@@ -368,6 +368,11 @@ export const BRUSHES = [
     help: "Merges the shortest edges under the brush, so a patch that came out far denser than the rest loses points and matches its surroundings. It never touches a hole's rim, never folds the surface, and refuses any merge that would flip a face. Strength sets how long an edge may be and still be merged. Example: the crowded triangles left where a dent used to be.",
   },
   {
+    // The other topology brush, and the other half of the density pair.
+    id: "detail", label: "Add detail", apply: () => 0, strength: 0.5, topo: "detail", counts: "changed",
+    help: "Splits the edges under the brush so the other brushes have something to work with, and does not move the surface at all: every new point sits exactly on the edge it splits. Strength sets how fine it goes, and an edge that is already short is left alone, so pressing again settles instead of running away. Example: an area so coarse that Smooth or Fill has nothing to bite on.",
+  },
+  {
     id: "even", label: "Even out", apply: brushEven, strength: 0.6,
     help: "Slides the points sideways until they are evenly spaced, leaving the shape where it is. Every other brush behaves better afterwards. Example: a patch of stretched, bunched triangles.",
   },

@@ -360,6 +360,150 @@ export function collapseShortEdges(pos, P, counts, indices, alive, hidden, corne
 }
 
 /**
+ * Split the edges whose BOTH ends are allowed: the Add detail brush, and the other half of Simplify's pair. The
+ * answer to "this patch is too coarse for any brush to have anything to bite on".
+ *
+ * Every new point sits at the STRAIGHT middle of the edge it splits, so the surface does not move at all. A
+ * smoothing subdivision would round the model off as a side effect of adding points, which is the opposite of what
+ * a repair tool is for.
+ *
+ * The part that can quietly ruin a model is the ring of polygons just OUTSIDE the footprint. If a split polygon uses
+ * (a, m) and (m, b) while its neighbour still uses (a, b), all three of those edges are held by ONE polygon, so the
+ * census gains three OPEN edges per T-junction and the brush manufactures holes in an editor whose whole purpose is
+ * closing them. So EVERY polygon touching a split edge is rebuilt:
+ *  - all of its edges split -> n quads around a new centre point (a quad stays quads, a triangle becomes 3 quads);
+ *  - only some of them -> the SAME polygon carrying the midpoints as extra corners. Its shape is untouched, because
+ *    a midpoint lies exactly on the edge it splits; it simply has more corners, and that is what closes the
+ *    T-junction. (An n-gon here is what Blender does by default for a partial subdivide, for the same reason.)
+ * The longest edges go first, so a capped stamp spends its budget where the detail is most missing.
+ *
+ * Returns new arrays, `pos` included since it GROWS, plus where each new point came from (srcOff / srcList), so the
+ * caller can carry the colours and the selection across.
+ * -> { split, added, pos, P, counts, indices, alive, hidden, cornerUv, srcOff, srcList }
+ */
+export function subdivideUnder(pos, P, counts, indices, alive, hidden, cornerUv, allow, minLen, maxSplits = 400) {
+  const st = faceStarts(counts), F = counts.length;
+  const none = { split: 0, added: 0, pos, P, counts, indices, alive, hidden, cornerUv, srcOff: new Int32Array(1), srcList: new Int32Array(0) };
+  // The candidates: an edge with both ends under the brush, longer than minLen. An edge already shorter than that is
+  // left alone, which is what makes pressing again settle instead of running away.
+  const seen = new Set(), ca = [], cb = [], clen = [];
+  for (let f = 0; f < F; f++) {
+    if (!alive[f]) continue;
+    const s = st[f], n = counts[f];
+    for (let k = 0; k < n; k++) {
+      const a = indices[s + k], b = indices[s + ((k + 1) % n)];
+      if (a === b || !allow[a] || !allow[b]) continue;
+      const key = a < b ? a * P + b : b * P + a;
+      if (seen.has(key)) continue;
+      const len = Math.hypot(pos[3 * a] - pos[3 * b], pos[3 * a + 1] - pos[3 * b + 1], pos[3 * a + 2] - pos[3 * b + 2]);
+      if (!(len > minLen)) continue;
+      seen.add(key);
+      ca.push(a);
+      cb.push(b);
+      clen.push(len);
+    }
+  }
+  if (!ca.length) return none;
+  let order = null;
+  if (ca.length > maxSplits) {
+    order = ca.map((_, i) => i).sort((x, y) => clen[y] - clen[x]);
+    order.length = maxSplits;
+  }
+  // A midpoint is keyed by the welded PAIR, so the two polygons sharing an edge get the same one: that is what keeps
+  // the split manifold.
+  const midOf = new Map(), newPos = [], srcOff = [0], srcList = [];
+  const take = order || ca.map((_, i) => i);
+  for (const i of take) {
+    const a = ca[i], b = cb[i];
+    midOf.set(a < b ? a * P + b : b * P + a, P + newPos.length / 3);
+    newPos.push((pos[3 * a] + pos[3 * b]) / 2, (pos[3 * a + 1] + pos[3 * b + 1]) / 2, (pos[3 * a + 2] + pos[3 * b + 2]) / 2);
+    srcList.push(a, b);
+    srcOff.push(srcList.length);
+  }
+  const outCounts = [], outIdx = [], outAlive = [], outHidden = [], outUv = cornerUv ? [] : null;
+  const mids = [];
+  for (let f = 0; f < F; f++) {
+    if (!alive[f]) continue;
+    const s = st[f], n = counts[f];
+    const uvc = (k) => cornerUv[2 * (s + (k % n))];
+    const uvd = (k) => cornerUv[2 * (s + (k % n)) + 1];
+    mids.length = 0;
+    let sCount = 0;
+    for (let k = 0; k < n; k++) {
+      const a = indices[s + k], b = indices[s + ((k + 1) % n)];
+      let m = -1;
+      if (a !== b) {
+        const g = midOf.get(a < b ? a * P + b : b * P + a);
+        if (g !== undefined) { m = g; sCount++; }
+      }
+      mids.push(m);
+    }
+    if (!sCount) {
+      outCounts.push(n);
+      for (let k = 0; k < n; k++) {
+        outIdx.push(indices[s + k]);
+        if (outUv) outUv.push(uvc(k), uvd(k));
+      }
+      outAlive.push(1);
+      outHidden.push(hidden[f]);
+    } else if (sCount === n) {
+      let cxx = 0, cyy = 0, czz = 0, cu = 0, cv = 0;
+      for (let k = 0; k < n; k++) {
+        const v = indices[s + k];
+        cxx += pos[3 * v]; cyy += pos[3 * v + 1]; czz += pos[3 * v + 2];
+        if (outUv) { cu += uvc(k); cv += uvd(k); }
+      }
+      const c = P + newPos.length / 3;
+      newPos.push(cxx / n, cyy / n, czz / n);
+      for (let k = 0; k < n; k++) srcList.push(indices[s + k]);
+      srcOff.push(srcList.length);
+      // v_k -> m_k -> centre -> m_(k-1) keeps the polygon's own winding, so nothing comes out inside first.
+      for (let k = 0; k < n; k++) {
+        const prev = (k + n - 1) % n;
+        outCounts.push(4);
+        outIdx.push(indices[s + k], mids[k], c, mids[prev]);
+        outAlive.push(1);
+        outHidden.push(hidden[f]);
+        if (outUv) {
+          outUv.push(uvc(k), uvd(k));
+          outUv.push((uvc(k) + uvc(k + 1)) / 2, (uvd(k) + uvd(k + 1)) / 2);
+          outUv.push(cu / n, cv / n);
+          outUv.push((uvc(prev) + uvc(k)) / 2, (uvd(prev) + uvd(k)) / 2);
+        }
+      }
+    } else {
+      // The transition polygon: same shape, extra corners. Dropping this branch is what leaves T-junctions behind.
+      let ring = 0;
+      for (let k = 0; k < n; k++) {
+        outIdx.push(indices[s + k]);
+        if (outUv) outUv.push(uvc(k), uvd(k));
+        ring++;
+        if (mids[k] >= 0) {
+          outIdx.push(mids[k]);
+          if (outUv) outUv.push((uvc(k) + uvc(k + 1)) / 2, (uvd(k) + uvd(k + 1)) / 2);
+          ring++;
+        }
+      }
+      outCounts.push(ring);
+      outAlive.push(1);
+      outHidden.push(hidden[f]);
+    }
+  }
+  const added = newPos.length / 3;
+  const outPos = new Float32Array(3 * (P + added));
+  outPos.set(pos);
+  outPos.set(newPos, 3 * P);
+  return {
+    split: take.length, added,
+    pos: outPos, P: P + added,
+    counts: Int32Array.from(outCounts), indices: Uint32Array.from(outIdx),
+    alive: Uint8Array.from(outAlive), hidden: Uint8Array.from(outHidden),
+    cornerUv: outUv ? Float32Array.from(outUv) : null,
+    srcOff: Int32Array.from(srcOff), srcList: Int32Array.from(srcList),
+  };
+}
+
+/**
  * Close loops: up to `maxLenOneFace` corners one polygon, else a fan around the loop's middle (a new point).
  * `firstOf[wid]` maps a welded id back to one point index (null when the loops already hold point indices).
  * -> { counts, indices, newPoints: number[] (xyz), faces }

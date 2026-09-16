@@ -2,7 +2,7 @@
 // keeps its quads through every edit and into the saved OBJ); triangles are derived from them for drawing, picking and
 // the maths. Per-polygon alive and hidden flags, a per-point selection, and the GPU buffers (drawn unindexed, so each
 // corner can have its own normal and colour). Every tool edits `pos`, the same numbers the screen shows.
-import { weldIds, faceStarts, census, collapseShortEdges } from "./topology.mjs";
+import { weldIds, faceStarts, census, collapseShortEdges, subdivideUnder } from "./topology.mjs";
 import { buildAdjacency, faceNormals, pointNormals, creasedCornerNormals, COS_CREASE } from "./geometry.mjs";
 
 const SEL = [0.965, 0.404, 0.267];
@@ -548,6 +548,47 @@ export class MeshModel {
     for (const p of points) allow[p] = 1;
     const r = collapseShortEdges(this.pos, this.P, this.counts, this.indices, this.alive, this.hidden, this.cornerUv, allow, maxLen, maxCollapses);
     if (!r.collapsed) return r;
+    this.counts = r.counts;
+    this.indices = r.indices;
+    this.alive = r.alive;
+    this.hidden = r.hidden;
+    this.cornerUv = r.cornerUv;
+    this.F = this.counts.length;
+    this.rebuild();
+    return r;
+  }
+
+  /**
+   * Add detail: split the edges among `points` (the brush's footprint). The point count GROWS, which is what makes
+   * this different from every other edit, so the colours and the selection are carried across HERE: `_derive` hands
+   * back a blank selection whenever the length changes (it would wipe the user's Protect painting on every stamp),
+   * and a new point with no colour of its own is a black dot on a vertex-coloured AI model. -> { split, added }
+   */
+  detailUnder(points, minLen, maxSplits) {
+    const allow = new Uint8Array(this.P);
+    for (const p of points) allow[p] = 1;
+    const r = subdivideUnder(this.pos, this.P, this.counts, this.indices, this.alive, this.hidden, this.cornerUv, allow, minLen, maxSplits);
+    if (!r.split) return r;
+    const P0 = this.P, P1 = r.P;
+    const colours = this.colours ? new Float32Array(3 * P1) : null;
+    if (colours) colours.set(this.colours);
+    const sel = new Uint8Array(P1);
+    sel.set(this.sel);
+    for (let i = 0; i < P1 - P0; i++) {
+      const a = r.srcOff[i], b = r.srcOff[i + 1], n = b - a || 1;
+      let all = b > a;
+      for (let j = a; j < b; j++) {
+        const q = r.srcList[j];
+        if (colours) for (let c = 0; c < 3; c++) colours[3 * (P0 + i) + c] += this.colours[3 * q + c] / n;
+        if (!this.sel[q]) all = false;
+      }
+      // A new point is picked only when every point it sits between was, so a protected patch keeps its own border.
+      sel[P0 + i] = all ? 1 : 0;
+    }
+    this.pos = r.pos;
+    this.P = P1;
+    this.colours = colours;
+    this.sel = sel;
     this.counts = r.counts;
     this.indices = r.indices;
     this.alive = r.alive;

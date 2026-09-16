@@ -84,9 +84,15 @@ export function installSculpt(ed) {
       });
     }
     if (!pts.length) return false;
-    const res = m.simplifyUnder(pts, r * 0.35 * ed.brushStrength(), 400);
-    if (!res.collapsed) return false;
-    stroke.changed += res.collapsed;
+    const k = ed.brushStrength();
+    // The two strengths are opposites, as the two brushes are: Simplify's is the longest edge it may MERGE, Add
+    // detail's is how fine it may SPLIT to. The floor under Add detail is what makes pressing again settle.
+    const res = brush.topo === "detail"
+      ? m.detailUnder(pts, Math.max(r * 0.6 * (1 - k), r * 0.04), 400)
+      : m.simplifyUnder(pts, r * 0.35 * k, 400);
+    const n = res.collapsed || res.split || 0;
+    if (!n) return false;
+    stroke.changed += n;
     stroke.moved = true;
     ed.afterGeometry();
     return true;
