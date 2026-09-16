@@ -187,7 +187,7 @@ class Edit3DEditor {
   afterGeometry() {
     const m = this.model;
     if (!m || !this.view) return;
-    m.writeColours(this.prefs.look, true);
+    m.writeColours(this.prefs.look, true, this.selectionActs());
     if (this.prefs.look === "wire") m.ensureWire();
     // Only when the topology can have changed. A stroke that just moved points leaves the counts alone, and the
     // census is an edge sort over the whole model.
@@ -207,8 +207,19 @@ class Edit3DEditor {
     this.syncMarkers();
   }
 
+  /**
+   * Can the area you picked do anything right now? In Polygons it always can: every button under Fix the selection
+   * acts on it. In Sculpt only when the Selection setting is on, since that is what makes the brushes read it. In
+   * Whole model nothing reads it at all. Where it cannot act it is drawn faint rather than hidden, so it is never
+   * lost and the Selection setting visibly brings it back.
+   */
+  selectionActs() {
+    const p = this.prefs;
+    return p.mode === "polys" || (p.mode === "sculpt" && p.lock !== "off");
+  }
+
   recolour() {
-    this.model?.writeColours(this.prefs.look, true);
+    this.model?.writeColours(this.prefs.look, true, this.selectionActs());
     this.view?.requestDraw();
   }
 
@@ -229,7 +240,7 @@ class Edit3DEditor {
     m.applyLook(this.prefs.look, this.prefs.xray);
     this.attach();
     if (m.wire) m.wire.visible = this.prefs.look === "wire" && !this.showingBefore;
-    m.writeColours(this.prefs.look, true);
+    m.writeColours(this.prefs.look, true, this.selectionActs());
     this.before?.userData.setLook(this.prefs.look, this.prefs.xray);
     this.view.requestDraw();
   }
@@ -261,6 +272,8 @@ class Edit3DEditor {
     this.sculpt?.cancel();
     this.hideRings();
     this.ui.setMode(mode);
+    // The selection is drawn faint in a mode that cannot use it, so a mode switch has to repaint it.
+    this.recolour();
     this.syncMarkers();
   }
 

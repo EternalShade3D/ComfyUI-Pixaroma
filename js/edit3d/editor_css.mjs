@@ -103,8 +103,12 @@ ${E} .pix-e3d-setrow{margin:0 0 10px;padding:5px 6px 5px 8px;background:rgba(0,0
 ${E} .pix-e3d-setrow > span:first-child{width:auto;min-width:42px;flex:0 0 auto;color:#8d9296;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;}
 ${E} .pix-e3d-setrow .pix-e3d-seg{flex:1;background:transparent;border:none;padding:0;}
 ${E} .pix-e3d-setrow .pix-e3d-seg button{padding:3px 4px;}
-${E} .pix-e3d-btnval{font-size:10px;color:${A};background:rgba(0,0,0,.28);border:1px solid #3a3d40;border-radius:10px;padding:0 8px;line-height:16px;font-family:Consolas,monospace;}
-${E} .pxf-btn:hover .pix-e3d-btnval{color:#fff;border-color:rgba(255,255,255,.5);}
+/* Deliberately QUIET: dim text, no pill. The chosen value already appears as the orange chip in the row directly
+   below, about 30px away, so a second orange pill saying the same word was pure noise and made the button compete
+   with the chip for "this is the one chosen". Orange now means exactly one thing. It also has to stay distinct from
+   the count badge beside it on Fill holes: that one is a MEASUREMENT of the model and keeps its outlined pill. */
+${E} .pix-e3d-btnval{font-size:10.5px;color:#8d9296;line-height:16px;}
+${E} .pxf-btn:hover .pix-e3d-btnval{color:rgba(255,255,255,.85);}
 /* margin-left:auto keeps a badge and a value TOGETHER at the right edge. The button is a flex row set to
    space-between, so with three children (name, badge, value) the badge would otherwise be stranded in the middle
    of the button. An auto margin eats the free space before space-between runs. Fill holes is the only button

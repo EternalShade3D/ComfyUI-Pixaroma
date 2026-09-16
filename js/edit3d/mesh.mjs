@@ -6,6 +6,12 @@ import { weldIds, faceStarts, census, collapseShortEdges, subdivideUnder } from 
 import { buildAdjacency, faceNormals, pointNormals, creasedCornerNormals, COS_CREASE } from "./geometry.mjs";
 
 const SEL = [0.965, 0.404, 0.267];
+// How strongly a tint replaces the surface colour. The selection is drawn FAINT wherever nothing can act on it
+// (Whole model mode, and Sculpt with the Selection setting off): reported 2026-09-16 as a selection that follows
+// you into a mode that appears to have no use for it. Dimmed rather than hidden, so a careful pick is never lost
+// and turning the Selection setting on visibly brings it back to life.
+const SEL_MIX = 0.65;
+const SEL_MIX_IDLE = 0.18;
 const BLUE = [0.18, 0.45, 0.9];
 const GREEN = [0.25, 0.72, 0.4];
 const CLAY = 0.62;
@@ -291,7 +297,7 @@ export class MeshModel {
   }
 
   /** Colours for the look, then the selection and the two Sharpen edge panels on top. */
-  writeColours(look, tint = true) {
+  writeColours(look, tint = true, selActive = true) {
     const out = this.aCol.array, { cp, T, colours, sel, panelA, panelB } = this;
     const nrm = this.aNor.array;
     const textured = look === "color" && !!this.aUv;
@@ -306,8 +312,14 @@ export class MeshModel {
         r = g = b = CLAY;
       }
       if (tint) {
-        const tc = panelA && panelA[p] ? BLUE : panelB && panelB[p] ? GREEN : sel[p] ? SEL : null;
-        if (tc) { r = r * 0.35 + tc[0] * 0.65; g = g * 0.35 + tc[1] * 0.65; b = b * 0.35 + tc[2] * 0.65; }
+        // The two Sharpen edge panels always show at full strength: they are only ever set while that tool is in
+        // use, so they cannot go stale. The SELECTION can: it survives a mode switch on purpose (losing a careful
+        // pick just for looking at another mode would be worse), so it is dimmed wherever nothing can act on it.
+        let tc = null, mix = SEL_MIX;
+        if (panelA && panelA[p]) tc = BLUE;
+        else if (panelB && panelB[p]) tc = GREEN;
+        else if (sel[p]) { tc = SEL; mix = selActive ? SEL_MIX : SEL_MIX_IDLE; }
+        if (tc) { const k = 1 - mix; r = r * k + tc[0] * mix; g = g * k + tc[1] * mix; b = b * k + tc[2] * mix; }
       }
       out[3 * c] = r; out[3 * c + 1] = g; out[3 * c + 2] = b;
     }

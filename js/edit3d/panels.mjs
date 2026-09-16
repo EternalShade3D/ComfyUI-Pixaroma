@@ -71,7 +71,9 @@ export function buildPanels(ed) {
   const SEGS = {
     look: [() => ed.prefs.look, (v) => ed.setLook(v)],
     sym: [() => ed.prefs.symmetry, (v) => ed.setSymmetry(v)],
-    lock: [() => ed.prefs.lock, (v) => { ed.prefs.lock = v; ui.refreshInfo(); }],
+    // recolour, not just refreshInfo: the selection is drawn dim while nothing can act on it, so turning this on
+    // has to brighten it at once. Without the repaint the tint would stay stale until something else redrew.
+    lock: [() => ed.prefs.lock, (v) => { ed.prefs.lock = v; ui.refreshInfo(); ed.recolour(); }],
     view: [() => (ed.showingBefore ? "before" : "after"), (v) => ed.setBeforeAfter(v)],
     cracks: [() => String(ed.opts.cracks), (v) => { ed.opts.cracks = Number(v); }],
     holeSize: [() => String(ed.opts.holeSize), (v) => { ed.opts.holeSize = Number(v); }],
