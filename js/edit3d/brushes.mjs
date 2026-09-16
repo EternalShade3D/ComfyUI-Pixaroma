@@ -397,11 +397,17 @@ export const BRUSHES = [
     help: "Pinch with a small push in, which cuts a line rather than only tightening one. Ctrl raises a ridge instead. Example: a panel line that got rounded off, or a seam that should read as a groove.",
   },
   {
-    id: "inflate", label: "Inflate", apply: brushInflate, strength: 0.25,
+    // 0.12, not 0.25. MEASURED: Inflate is exactly LINEAR - every stamp moves as far as the last one, forever
+    // (decay 1.00 at every strength), because it pushes along the normal rather than towards a target. At 0.25 one
+    // stamp moved 5% of the brush radius and twenty moved 100% of it, so it blows through the shape while every
+    // converging brush beside it is settling. Halving it keeps a visible first stamp and buys twice the steering.
+    id: "inflate", label: "Inflate", apply: brushInflate, strength: 0.12,
     help: "Pushes the surface out along its own direction at every point, so a thin part thickens and keeps its shape. Ctrl pulls it in. Example: a barrel or a limb that came out too thin to print.",
   },
   {
-    id: "buildup", label: "Build up", apply: brushBuildUp, strength: 0.3,
+    // 0.15, not 0.3, for the same measured reason as Inflate: it accumulates without limit (decay 1.00), so twenty
+    // stamps at the old default moved 120% of the brush radius.
+    id: "buildup", label: "Build up", apply: brushBuildUp, strength: 0.15,
     help: "Lays a smooth mound along one direction, the average under the brush, instead of following every wrinkle. Ctrl carves the same shape inwards. Example: rebuilding a chipped corner, or deepening a groove.",
   },
 ];

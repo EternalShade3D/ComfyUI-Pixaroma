@@ -342,7 +342,11 @@ function renderOptions(ed, bar) {
     const b = brushById(ed.prefs.brushId);
     // Ctrl only means something for a brush that HAS an opposite: a topology brush, Grab and Fix spikes do not, and
     // naming a key that does nothing is worse than naming none. The same two are a CLICK rather than a drag.
-    const ctrl = b.topo || b.grabs || b.id === "spike" ? "" : ", hold Ctrl to reverse it";
+    // Protect does not REVERSE with Ctrl, it rubs the painted area out, which is a different idea and the reason it
+    // gets its own wording rather than the shared one.
+    const ctrl = b.paints ? ", hold Ctrl to rub it out"
+      : b.topo || b.grabs || b.id === "spike" ? ""
+      : ", hold Ctrl to reverse it";
     const verb = b.topo || b.id === "spike" ? "click on the model" : "drag on the model";
     bar.innerHTML = '<span class="pix-e3d-opt-label">Brush size</span><input type="range" data-opt="brush" min="0.004" max="0.15" step="0.001" data-name="Brush size" data-help="How wide the brush reaches, in millimetres on a 100 mm print. The [ and ] keys change it too.">'
       + `<span class="pix-e3d-opt-val" data-out="brush"></span>${through}${sep}${hint(`${b.label}: ${verb}${ctrl}.${sym}`)}`;
