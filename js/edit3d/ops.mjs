@@ -191,10 +191,17 @@ export class Ops {
   del() {
     return this.run(() => {
       const m = this.ed.model;
+      // Counted BEFORE the delete, while the selection is still there. A face with only some corners selected is
+      // skipped (Delete needs them all), which on a quad model is the fringe around a Panel selection. Saying so
+      // turns "why is there a ragged border left" into something the user can act on.
+      const skipped = m.partlySelectedCount();
       const n = m.deleteSelected();
       if (!n) { this.needSelection(); return false; }
       m.sel.fill(0);
-      return `Delete (${fmtInt(n)} faces)`;
+      if (skipped) {
+        this.toast(`${fmtInt(skipped)} face${skipped === 1 ? " was" : "s were"} left because only part of ${skipped === 1 ? "it" : "them"} was selected: on a quad model that is the row along the edge of the selection. Press Grow before Delete to take them too.`, 8000);
+      }
+      return `Delete (${fmtInt(n)} faces${skipped ? `, ${fmtInt(skipped)} partly selected left alone` : ""})`;
     }, "Deleting...");
   }
 
