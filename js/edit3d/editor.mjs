@@ -218,6 +218,18 @@ class Edit3DEditor {
     return p.mode === "polys" || (p.mode === "sculpt" && p.lock !== "off");
   }
 
+  /**
+   * Delete and Hide are the two SHORTCUTS that consume the picked area, and they are not tied to a mode: they work
+   * wherever you press them. The area is drawn faint where no tool of the mode uses it, so acting on it there would
+   * be acting on something the screen is playing down. So take the user to Polygons first, where it is shown at full
+   * strength, exactly as a tool key already does - but ONLY when there is something to act on, or a key that was
+   * going to do nothing would still throw the mode across.
+   */
+  actOnSelection(fn) {
+    if (this.model?.selectedCount() && !this.selectionActs()) this.setMode("polys");
+    fn();
+  }
+
   recolour() {
     this.model?.writeColours(this.prefs.look, true, this.selectionActs());
     this.view?.requestDraw();
@@ -394,7 +406,7 @@ class Edit3DEditor {
       return;
     }
     if (e.altKey) return;
-    if (e.key === "Delete") { e.preventDefault(); this.ops?.del(); return; }
+    if (e.key === "Delete") { e.preventDefault(); this.actOnSelection(() => this.ops?.del()); return; }
     const tools = { b: "select", d: "erase", l: "lasso", p: "panel", i: "piece", m: "move", e: "edge", o: "hole" };
     // Sculpt mode has its own letters, the way a sculpting program does: the same key means the brush there and the
     // tool in Polygons. Nothing here may collide with the view keys (1 3 7 0 F) or with H, X, A and the brackets.
@@ -403,7 +415,7 @@ class Edit3DEditor {
     if (this.prefs.mode === "sculpt" && brushKeys[k]) this.setBrush(brushKeys[k]);
     else if (tools[k]) this.setTool(tools[k]);
     else if (views[k]) this.setView(views[k]);
-    else if (k === "h") this.selection("hide");
+    else if (k === "h") this.actOnSelection(() => this.selection("hide"));
     else if (k === "x") this.setXray(!this.prefs.xray);
     else if (k === "[" || k === "]") {
       this.prefs.brush = Math.min(0.15, Math.max(0.004, this.prefs.brush * (k === "]" ? 1.15 : 1 / 1.15)));
