@@ -43,7 +43,8 @@ const num = (v, lo, hi, d) => (Number.isFinite(v) && v >= lo && v <= hi ? v : d)
 function sanitizeStrengths(raw) {
   const s = raw && typeof raw === "object" ? raw : {};
   const out = {};
-  for (const id of BRUSH_IDS) if (Number.isFinite(s[id])) out[id] = Math.min(1, Math.max(0.05, s[id]));
+  // Down to 1%: Crease and Pinch were still too strong at the old 5% floor.
+  for (const id of BRUSH_IDS) if (Number.isFinite(s[id])) out[id] = Math.min(1, Math.max(0.01, s[id]));
   return out;
 }
 

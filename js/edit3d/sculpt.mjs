@@ -186,9 +186,13 @@ export function installSculpt(ed) {
     P.drawRing(ev, hit.point, r, brush.paints ? (invert ? " remove" : " mask") : brush.grabs ? " move" : invert ? " remove" : " sculpt");
     if (!stroke) return;
     if (stroke.grab) { applyGrab(ev); return; }
-    // Stamped along the way, so a fast drag is one stroke and not a row of dabs.
+    // ONE stamp per step of the brush along the path, never one per frame. Without this gate a slow drag, or simply
+    // holding still with the button down, lands a stamp on every animation frame and piles them up: reported as
+    // "even at 10% it is too strong", which it was, by a factor of however long you lingered.
     const d = stroke.last.distanceTo(hit.point), stepLen = r * SPACING;
-    if (d > stepLen && d < r * MAX_BRIDGE) {
+    if (d < stepLen) return;
+    if (d < r * MAX_BRIDGE) {
+      // Stamped along the way, so a fast drag is one stroke and not a row of dabs.
       const n = Math.min(24, Math.ceil(d / stepLen));
       for (let i = 1; i < n; i++) paint(_c.copy(stroke.last).lerp(hit.point, i / n), invert);
     }

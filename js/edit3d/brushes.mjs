@@ -211,7 +211,8 @@ export function brushCrease(ctx) {
   if (!pl) return 0;
   const moved = brushPinch(ctx);
   const { pos, idx, w, k, invert, radius } = ctx;
-  const depth = (invert ? -1 : 1) * k * radius * 0.08;
+  // Gentle on purpose: a crease that cuts fast cannot be steered, and several soft passes always beat one hard one.
+  const depth = (invert ? -1 : 1) * k * radius * 0.04;
   for (let i = 0; i < idx.length; i++) {
     const p = idx[i], f = depth * w[i];
     pos[3 * p] -= pl.nx * f; pos[3 * p + 1] -= pl.ny * f; pos[3 * p + 2] -= pl.nz * f;
@@ -268,11 +269,15 @@ export const BRUSHES = [
     help: "Shaves off only what sticks out above the average and leaves the dents alone. Hold Ctrl to do the opposite and raise the pits. Example: bumps and pimples on a flat panel.",
   },
   {
-    id: "pinch", label: "Pinch", apply: brushPinch, strength: 0.15,
+    id: "fill", label: "Fill", apply: (ctx) => brushScrape({ ...ctx, invert: !ctx.invert }), strength: 0.5,
+    help: "Raises only what sits BELOW the average and leaves the good surface where it is: the brush for dents and pits. Ctrl turns it back into Scrape. Example: the dents in the flat side of a gun.",
+  },
+  {
+    id: "pinch", label: "Pinch", apply: brushPinch, strength: 0.08,
     help: "Gathers the surface towards the middle of the brush, sideways, so a soft edge tightens into a crisp line without sinking. Ctrl spreads it apart. Example: an edge that came out rounded. Go gently: this one runs away if you lean on it.",
   },
   {
-    id: "crease", label: "Crease", apply: brushCrease, strength: 0.2,
+    id: "crease", label: "Crease", apply: brushCrease, strength: 0.08,
     help: "Pinch with a small push in, which cuts a line rather than only tightening one. Ctrl raises a ridge instead. Example: a panel line that got rounded off, or a seam that should read as a groove.",
   },
   {

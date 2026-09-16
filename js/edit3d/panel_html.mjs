@@ -24,6 +24,7 @@ export const ICONS = {
   crease: '<svg viewBox="0 0 24 24"><path d="M3 7h6l3 9 3-9h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   inflate: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 5V2M12 22v-3M5 12H2M22 12h-3M7.5 7.5L5.5 5.5M18.5 18.5l-2-2M16.5 7.5l2-2M5.5 18.5l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   buildup: '<svg viewBox="0 0 24 24"><path d="M2 18c4 0 5-9 10-9s6 9 10 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  fill: '<svg viewBox="0 0 24 24"><path d="M3 9h7l2 5 2-5h7" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".55"/><path d="M2 15h20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M12 12v-4M10 10l2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
   grab: '<svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
@@ -93,7 +94,7 @@ export function rightHtml() {
   return `
 <div class="pxf-panel" data-mode="sculpt"><div class="pxf-panel-title">Brush settings</div>
 <div class="pix-e3d-brushname" data-el="brushName"></div>
-<div class="pix-e3d-slider" data-name="Strength" data-help="How hard the brush pulls. Each brush remembers its own: Smooth likes half, Flatten less. Several soft passes beat one hard one."><span>Strength</span><input type="range" min="5" max="100" step="5" data-brange="strength"><b data-out="strength"></b></div>
+<div class="pix-e3d-slider" data-name="Strength" data-help="How hard the brush pulls, from 1% to 100% in steps of one. Each brush remembers its own: Smooth likes half, Pinch and Crease want under a tenth of that. Several soft passes always beat one hard one."><span>Strength</span><input type="range" min="1" max="100" step="1" data-brange="strength"><b data-out="strength"></b></div>
 ${symRow()}
 <div class="pix-e3d-row pix-e3d-symrow" data-name="Selection" data-help="What the area you picked in Polygons mode does to the brushes. Protected means the brush cannot move it; Only there means the brush moves nothing else."><span>Selection</span>${seg("lock", [["off", "Off", "The selection is ignored: the brush works wherever you drag it."], ["protect", "Protected", "The brush never moves the selected points. Select a crisp edge, then smooth right up against it without losing it."], ["only", "Only there", "The brush moves the selected points and nothing else, however big the brush is."]])}</div>
 <div class="pix-e3d-locknote" data-el="lockNote"></div>
