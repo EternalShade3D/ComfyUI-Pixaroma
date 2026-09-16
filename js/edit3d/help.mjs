@@ -11,6 +11,7 @@ export const EDIT3D_HELP = {
         "3D models made by AI (Pixal3D, Trellis 2, Hunyuan 3D) come out with a hidden second skin inside, small holes, loose specks, " +
         "wavy flat panels and soft edges. Edit 3D opens the model in a fullscreen editor with a mode for each kind of work: " +
         "Whole model, where one press fixes everything at once (Remove inside surfaces, Fill holes, Quads, Make solid...), " +
+        "Sculpt, where brushes shape the surface under your hand (Smooth a lumpy area, Scrape a bump off a panel), " +
         "and Polygons, where you pick exactly the faces you mean and fix only those (Flatten a wavy panel, Sharpen an edge, " +
         "Delete a loose piece). Nothing changes that you did not ask for, and every step can be undone.",
     },
@@ -31,8 +32,9 @@ export const EDIT3D_HELP = {
         "The switch at the top left decides what the editor shows. It never changes the model, so you can switch as often as you like, "
         + "and the view, the looks, Before and After, Undo, the History and both Save buttons are there in every mode.",
       defs: [
-        ["Whole model", "One press, the whole model, nothing to pick first. Model check on the left lists what is wrong and which button fixes it; the buttons on the right do the work."],
-        ["Polygons", "Pick the exact faces you mean with the tools on the left, then fix only those on the right. This is where the brushes, Lasso, Panel, Piece, Hide and Isolate live."],
+        ["Whole model", "One press, the whole model, nothing to pick first. Model check on the left lists what is wrong and which button fixes it, with a Fix button on each line that needs one."],
+        ["Sculpt", "Brushes that shape the surface under your hand: Smooth, Even out, Flatten and Scrape. Hold Ctrl to reverse any of them, and one drag is one step you can undo."],
+        ["Polygons", "Pick the exact faces you mean with the tools on the left, then fix only those on the right. This is where the selection brushes, Lasso, Panel, Piece, Hide and Isolate live."],
       ],
     },
     {
@@ -45,6 +47,33 @@ export const EDIT3D_HELP = {
         ["mesh (output)", "The edited model as triangles with its colours, for any mesh node."],
         ["model_3d (output)", "The edited model as a file: an OBJ that keeps quads and colours, or a GLB that keeps a texture. Wire it into Save 3D Pixaroma."],
         ["report (output)", "What was handed on, as text."],
+      ],
+    },
+    {
+      heading: "Sculpt mode: the brushes",
+      body:
+        "Drag on the model and the surface moves under the brush. Every brush pulls the surface towards something that is "
+        + "already right, which is what makes them repair tools and not modelling clay: the neighbours, a flat plane, the crease. "
+        + "Hold Ctrl to reverse a brush, and one drag is one step in the History.",
+      table: {
+        headers: ["Brush", "What it does", "Example"],
+        rows: [
+          ["Smooth", "Evens the surface out towards its neighbours, and stops at a crease, so a crisp edge beside the lumps survives. Ctrl sharpens instead.", "The stair steps and lumps on a curved AI surface."],
+          ["Even out", "Slides the points sideways until they are evenly spaced, leaving the shape where it is. Every other brush behaves better afterwards.", "A patch of stretched, bunched triangles."],
+          ["Flatten", "Presses everything under the brush onto one plane.", "A panel that should be flat but waves."],
+          ["Scrape", "Shaves off only what sticks out above the average and leaves the dents alone. Ctrl does the opposite and raises the pits.", "Bumps and pimples on a flat panel."],
+        ],
+      },
+    },
+    {
+      heading: "Sculpt mode: the settings",
+      bullets: [
+        "Strength is remembered for each brush on its own, because they want different amounts: Smooth likes half, Flatten less. Several soft passes beat one hard one.",
+        "Brush size is the same control as in Polygons mode, in millimetres on a 100 mm print, and the [ and ] keys change it.",
+        "Symmetry works here too: with an axis on, the brush works on both sides at once and a second dashed ring shows you where.",
+        "Lock uses the selection you made in Polygons mode. Protect means the selected points are never moved, so you can smooth right up against a crisp edge without losing it; Only inside means nothing else moves. With nothing selected it does nothing.",
+        "Facing me and Through work as they do for the selection tools: Through reaches the far side of a thin part as well.",
+        "Brushes move the points that are already there and never add new ones. On a coarse patch there is nothing to shape, so press Quads in Whole model first, or Subdivide the area in Polygons mode.",
       ],
     },
     {
