@@ -64,7 +64,7 @@ export function leftHtml() {
 <div class="pxf-panel" data-mode="sculpt"><div class="pxf-panel-title">Brushes</div><div class="pix-e3d-tools">
 ${BRUSHES.map((b) => `<button type="button" class="pix-e3d-tool" data-brush="${b.id}" data-name="${b.label}" data-help="${b.help}">${ICONS[b.id] || ICONS.smooth}${b.label}</button>`).join("")}
 </div>
-<div class="pix-e3d-hint">Drag on the model to use the brush. Hold Ctrl to reverse it, the [ and ] keys change its size, and one drag is one step in the History.</div>
+<div class="pix-e3d-hint">Drag on the model to use the brush. Hold Ctrl to reverse most of them, the [ and ] keys change its size, and one drag is one step in the History.</div>
 </div>
 <div class="pxf-panel" data-mode="model"><div class="pxf-panel-title">Model check</div>
 <div class="pix-e3d-check" data-el="check"></div>
@@ -102,7 +102,7 @@ ${symRow()}
 <div class="pix-e3d-row pix-e3d-symrow" data-name="Selection" data-help="What the area you picked in Polygons mode does to the brushes. Protected means the brush cannot move it; Only there means the brush moves nothing else."><span>Selection</span>${seg("lock", [["off", "Off", "The selection is ignored: the brush works wherever you drag it."], ["protect", "Protected", "The brush never moves the selected points. Select a crisp edge, then smooth right up against it without losing it."], ["only", "Only there", "The brush moves the selected points and nothing else, however big the brush is."]])}</div>
 <div class="pix-e3d-locknote" data-el="lockNote"></div>
 <div class="pix-e3d-g2">${b('data-sel="none"', "Clear", "Rubs out the whole painted area, so every brush can reach everywhere again. (Esc)")}${b('data-sel="invert"', "Invert", "Swaps it over: what was protected is free and what was free is protected.")}</div>
-<div class="pix-e3d-hint">Brushes move the points that are already there; they never add new ones. On a coarse patch press Quads in Whole model first, so there is something to shape.</div>
+<div class="pix-e3d-hint">Most brushes move the points that are already there. Add detail splits the edges under the brush when a patch is too coarse to shape, Simplify merges them away when it came out too dense, and Quads in Whole model is quicker when the density is wrong all over.</div>
 </div>
 <div class="pxf-panel" data-mode="polys"><div class="pxf-panel-title">Fix the selection</div>
 ${wide('data-op="flatten"', "Flatten", "Moves the selected panel onto its best flat plane. Points facing another way are left alone, and the edge of the selection fades in. Example: Panel on a wavy car door, then Flatten.")}

@@ -90,7 +90,9 @@ export function installSculpt(ed) {
     const res = brush.topo === "detail"
       ? m.detailUnder(pts, Math.max(r * 0.6 * (1 - k), r * 0.04), 400)
       : m.simplifyUnder(pts, r * 0.35 * k, 400);
-    const n = res.collapsed || res.split || 0;
+    // The History line says "points", so report points: Add detail's honest number is what it ADDED (a midpoint per
+    // split edge, plus a centre per fully split polygon), which is more than the edges it split.
+    const n = res.collapsed || res.added || 0;
     if (!n) return false;
     stroke.changed += n;
     stroke.moved = true;
