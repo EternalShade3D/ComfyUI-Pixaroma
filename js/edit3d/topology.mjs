@@ -2,7 +2,7 @@
 // `wid` Int32Array welds points by position (weldIds) or null when the points are already welded, `alive`
 // Uint8Array(F) per polygon. Sorted typed arrays and open-addressing tables instead of Maps where a model of a
 // million faces would otherwise take seconds.
-export const _testHooks = { turnAtPinch: true };
+export const _testHooks = { turnAtPinch: true, earFill: true };
 
 /** One id per PLACE, numbered by first appearance: points within 1e-6 of the box diagonal share an id (the rule of
  *  nodes/_mesh3d.weld_ids). A point that is not a real number gets an id of its own after the others. */
@@ -536,6 +536,89 @@ export function subdivideUnder(pos, P, counts, indices, alive, hidden, cornerUv,
  * `firstOf[wid]` maps a welded id back to one point index (null when the loops already hold point indices).
  * -> { counts, indices, newPoints: number[] (xyz), faces }
  */
+/** Newell's normal of a loop: the average plane of a rim that is never exactly flat. */
+function loopNormal(positions, L) {
+  let nx = 0, ny = 0, nz = 0;
+  for (let i = 0; i < L.length; i++) {
+    const a = L[i], b = L[(i + 1) % L.length];
+    const ax = positions[3 * a], ay = positions[3 * a + 1], az = positions[3 * a + 2];
+    const bx = positions[3 * b], by = positions[3 * b + 1], bz = positions[3 * b + 2];
+    nx += (ay - by) * (az + bz);
+    ny += (az - bz) * (ax + bx);
+    nz += (ax - bx) * (ay + by);
+  }
+  const l = Math.hypot(nx, ny, nz);
+  return l ? [nx / l, ny / l, nz / l] : null;
+}
+
+/**
+ * Triangulate a rim by clipping ears, so the patch has NO point of its own in the middle. A fan puts one point in
+ * the centre carrying an edge to every rim point, which on a 14 edge rim is a 14 way star: exactly the artefact
+ * users point at and call messed up geometry. Ear clipping adds no point at all, so no star can exist.
+ * The loop is flattened onto its own Newell plane to decide which corners are ears; a rim too creased to flatten
+ * (no normal) falls back to the fan, which always produces something. -> true when it triangulated
+ */
+function earClip(positions, L, newCounts, newIdx) {
+  const n = L.length, N = loopNormal(positions, L);
+  if (!N) return false;
+  let tx = Math.abs(N[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  let ux = tx[1] * N[2] - tx[2] * N[1], uy = tx[2] * N[0] - tx[0] * N[2], uz = tx[0] * N[1] - tx[1] * N[0];
+  const ul = Math.hypot(ux, uy, uz) || 1;
+  ux /= ul; uy /= ul; uz /= ul;
+  const vx = N[1] * uz - N[2] * uy, vy = N[2] * ux - N[0] * uz, vz = N[0] * uy - N[1] * ux;
+  const X = new Float64Array(n), Y = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const p = L[i], px = positions[3 * p], py = positions[3 * p + 1], pz = positions[3 * p + 2];
+    X[i] = px * ux + py * uy + pz * uz;
+    Y[i] = px * vx + py * vy + pz * vz;
+  }
+  let area = 0;
+  for (let i = 0; i < n; i++) { const j = (i + 1) % n; area += X[i] * Y[j] - X[j] * Y[i]; }
+  const sign = area >= 0 ? 1 : -1;
+  const cross = (a, b, c) => sign * ((X[b] - X[a]) * (Y[c] - Y[a]) - (Y[b] - Y[a]) * (X[c] - X[a]));
+  const inside = (a, b, c, p) => cross(a, b, p) >= 0 && cross(b, c, p) >= 0 && cross(c, a, p) >= 0;
+  const live = [];
+  for (let i = 0; i < n; i++) live.push(i);
+  const out = [];
+  let guard = 0, start = 0;
+  const CAND = 8;
+  while (live.length > 3 && guard++ < 4 * n) {
+    // The BEST ear, not the first one found. Clipping the first valid ear each round keeps returning to the easiest
+    // corner and walks around it, which rebuilds the very star this function exists to avoid: MEASURED, a 14 edge
+    // rim put 11 of its 12 triangles on ONE rim point, no better than the fan it replaced. Scoring by shape spreads
+    // the work across the rim. Densifying afterwards cannot undo it, since splitting edges never lowers a valence.
+    // The scan is bounded (a rotating start, at most CAND candidates) so a 600 edge rim, the most one Fill hole
+    // click closes, cannot make this cubic.
+    let bestK = -1, bestQ = -1, seen = 0;
+    for (let s = 0; s < live.length && seen < CAND; s++) {
+      const k = (start + s) % live.length;
+      const a = live[(k + live.length - 1) % live.length], b = live[k], c = live[(k + 1) % live.length];
+      const ar = cross(a, b, c);
+      if (ar <= 0) continue; // reflex corner, not an ear
+      let blocked = false;
+      for (const q of live) {
+        if (q === a || q === b || q === c) continue;
+        if (inside(a, b, c, q)) { blocked = true; break; }
+      }
+      if (blocked) continue;
+      seen++;
+      // 1 for an equilateral triangle, towards 0 for a sliver. `ar` is twice the signed area.
+      const e1 = (X[a] - X[b]) ** 2 + (Y[a] - Y[b]) ** 2, e2 = (X[b] - X[c]) ** 2 + (Y[b] - Y[c]) ** 2, e3 = (X[c] - X[a]) ** 2 + (Y[c] - Y[a]) ** 2;
+      const qual = (2 * Math.sqrt(3) * ar) / (e1 + e2 + e3 || 1);
+      if (qual > bestQ) { bestQ = qual; bestK = k; }
+    }
+    if (bestK < 0) return false; // a rim this tangled is better served by the fan than by a bad guess
+    const a = live[(bestK + live.length - 1) % live.length], b = live[bestK], c = live[(bestK + 1) % live.length];
+    out.push([a, b, c]);
+    live.splice(bestK, 1);
+    start = live.length ? bestK % live.length : 0;
+  }
+  if (live.length === 3) out.push([live[0], live[1], live[2]]);
+  // Wound the same way the rest of this function winds a fill: reversed against the loop's own order.
+  for (const [a, b, c] of out) { newCounts.push(3); newIdx.push(L[c], L[b], L[a]); }
+  return true;
+}
+
 export function fanFill(positions, loops, maxLenOneFace, firstOf = null) {
   const newCounts = [], newIdx = [], newPoints = [];
   const base = positions.length / 3;
@@ -543,6 +626,9 @@ export function fanFill(positions, loops, maxLenOneFace, firstOf = null) {
     const L = firstOf ? loop.map((w) => firstOf[w]) : loop;
     const n = L.length;
     if (n <= maxLenOneFace) { newCounts.push(n); for (let i = n - 1; i >= 0; i--) newIdx.push(L[i]); continue; }
+    // A rim past the one polygon limit is triangulated with no new point, so the patch carries no star. The fan is
+    // kept as the fallback for a rim too tangled to clip, and `_testHooks.earFill = false` restores it everywhere.
+    if (_testHooks.earFill && earClip(positions, L, newCounts, newIdx)) continue;
     let cx = 0, cy = 0, cz = 0;
     for (const p of L) { cx += positions[3 * p]; cy += positions[3 * p + 1]; cz += positions[3 * p + 2]; }
     const c = base + newPoints.length / 3;
