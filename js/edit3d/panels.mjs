@@ -115,8 +115,9 @@ export function buildPanels(ed) {
     els.brushName.textContent = b.label;
     els.brushName.dataset.name = b.label;
     els.brushName.dataset.help = b.help;
-    // Strength means nothing to the Protect brush, and a control that does nothing is worse than no control.
-    strengthRange.closest(".pix-e3d-slider").style.display = b.paints ? "none" : "";
+    // Strength means nothing to Protect (it paints) or to Grab (it moves by the drag), and a control that does
+    // nothing is worse than no control at all.
+    strengthRange.closest(".pix-e3d-slider").style.display = b.paints || b.grabs ? "none" : "";
     strengthRange.value = String(Math.round(ed.brushStrength() * 100));
     strengthOut.textContent = strengthRange.value + "%";
     for (const x of all("[data-brush]")) x.classList.toggle("active", x.dataset.brush === b.id);

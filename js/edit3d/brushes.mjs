@@ -184,6 +184,71 @@ export function brushScrape(ctx) {
   return moved;
 }
 
+/** Pinch: gather the surface towards the middle of the brush, SIDEWAYS, so an edge tightens instead of sinking.
+ *  Ctrl spreads it apart again. */
+export function brushPinch(ctx) {
+  const pl = brushPlane(ctx);
+  if (!pl) return 0;
+  const { pos, idx, w, k, invert, cx, cy, cz } = ctx;
+  const s = (invert ? -1 : 1) * k * 0.5;
+  let moved = 0;
+  for (let i = 0; i < idx.length; i++) {
+    const p = idx[i];
+    let dx = pos[3 * p] - cx, dy = pos[3 * p + 1] - cy, dz = pos[3 * p + 2] - cz;
+    const along = dx * pl.nx + dy * pl.ny + dz * pl.nz;
+    dx -= along * pl.nx; dy -= along * pl.ny; dz -= along * pl.nz; // only the sideways part: no sinking
+    const f = s * w[i];
+    pos[3 * p] -= dx * f; pos[3 * p + 1] -= dy * f; pos[3 * p + 2] -= dz * f;
+    moved++;
+  }
+  return moved;
+}
+
+/** Crease: Pinch, plus a small push IN along the surface, which is what cuts a line rather than just tightening one.
+ *  Ctrl raises a ridge instead. */
+export function brushCrease(ctx) {
+  const pl = brushPlane(ctx);
+  if (!pl) return 0;
+  const moved = brushPinch(ctx);
+  const { pos, idx, w, k, invert, radius } = ctx;
+  const depth = (invert ? -1 : 1) * k * radius * 0.08;
+  for (let i = 0; i < idx.length; i++) {
+    const p = idx[i], f = depth * w[i];
+    pos[3 * p] -= pl.nx * f; pos[3 * p + 1] -= pl.ny * f; pos[3 * p + 2] -= pl.nz * f;
+  }
+  return moved;
+}
+
+/** Inflate: out along the surface's OWN direction at each point, so a thin part thickens and keeps its shape.
+ *  Ctrl pulls it in. */
+export function brushInflate(ctx) {
+  const { pos, ptN, idx, w, k, invert, radius } = ctx;
+  const s = (invert ? -1 : 1) * k * radius * 0.25;
+  let moved = 0;
+  for (let i = 0; i < idx.length; i++) {
+    const p = idx[i], f = s * w[i];
+    pos[3 * p] += ptN[3 * p] * f; pos[3 * p + 1] += ptN[3 * p + 1] * f; pos[3 * p + 2] += ptN[3 * p + 2] * f;
+    moved++;
+  }
+  return moved;
+}
+
+/** Build up: out along ONE direction, the average under the brush, so it lays a smooth mound instead of following
+ *  every wrinkle the way Inflate does. Ctrl carves the same shape inwards. */
+export function brushBuildUp(ctx) {
+  const pl = brushPlane(ctx);
+  if (!pl) return 0;
+  const { pos, idx, w, k, invert, radius } = ctx;
+  const s = (invert ? -1 : 1) * k * radius * 0.25;
+  let moved = 0;
+  for (let i = 0; i < idx.length; i++) {
+    const p = idx[i], f = s * w[i];
+    pos[3 * p] += pl.nx * f; pos[3 * p + 1] += pl.ny * f; pos[3 * p + 2] += pl.nz * f;
+    moved++;
+  }
+  return moved;
+}
+
 /** The palette, in the order it is shown. `strength` is the default for that brush, tuned by hand on real models. */
 export const BRUSHES = [
   {
@@ -202,7 +267,30 @@ export const BRUSHES = [
     id: "scrape", label: "Scrape", apply: brushScrape, strength: 0.5,
     help: "Shaves off only what sticks out above the average and leaves the dents alone. Hold Ctrl to do the opposite and raise the pits. Example: bumps and pimples on a flat panel.",
   },
+  {
+    id: "pinch", label: "Pinch", apply: brushPinch, strength: 0.15,
+    help: "Gathers the surface towards the middle of the brush, sideways, so a soft edge tightens into a crisp line without sinking. Ctrl spreads it apart. Example: an edge that came out rounded. Go gently: this one runs away if you lean on it.",
+  },
+  {
+    id: "crease", label: "Crease", apply: brushCrease, strength: 0.2,
+    help: "Pinch with a small push in, which cuts a line rather than only tightening one. Ctrl raises a ridge instead. Example: a panel line that got rounded off, or a seam that should read as a groove.",
+  },
+  {
+    id: "inflate", label: "Inflate", apply: brushInflate, strength: 0.25,
+    help: "Pushes the surface out along its own direction at every point, so a thin part thickens and keeps its shape. Ctrl pulls it in. Example: a barrel or a limb that came out too thin to print.",
+  },
+  {
+    id: "buildup", label: "Build up", apply: brushBuildUp, strength: 0.3,
+    help: "Lays a smooth mound along one direction, the average under the brush, instead of following every wrinkle. Ctrl carves the same shape inwards. Example: rebuilding a chipped corner, or deepening a groove.",
+  },
 ];
+
+// Not a stamping brush: it drags what it grabbed, so sculpt.mjs holds the points from the moment of the press and
+// moves them by the drag vector. The same thing as the Move tool in Polygons mode, living where shaping lives.
+BRUSHES.push({
+  id: "grab", label: "Grab", apply: () => 0, strength: 1, grabs: true,
+  help: "Drags the surface along with the brush while the rim of the brush stays put. Example: pull a dented nose tip back out, or nudge a part that sits slightly wrong. It is the same tool as Move in Polygons mode.",
+});
 
 // Not a sculpting brush: it paints the PICKED AREA (the same points Polygons mode selects), so the protection can be
 // painted where it is needed without leaving Sculpt mode. `paints` tells sculpt.mjs to set the selection instead of

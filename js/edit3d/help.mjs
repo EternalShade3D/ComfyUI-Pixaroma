@@ -62,6 +62,11 @@ export const EDIT3D_HELP = {
           ["Even out", "Slides the points sideways until they are evenly spaced, leaving the shape where it is. Every other brush behaves better afterwards.", "A patch of stretched, bunched triangles."],
           ["Flatten", "Presses everything under the brush onto one plane.", "A panel that should be flat but waves."],
           ["Scrape", "Shaves off only what sticks out above the average and leaves the dents alone. Ctrl does the opposite and raises the pits.", "Bumps and pimples on a flat panel."],
+          ["Pinch", "Gathers the surface sideways towards the middle of the brush, so a soft edge tightens into a crisp line without sinking. Ctrl spreads it apart. Go gently.", "An edge that came out rounded."],
+          ["Crease", "Pinch with a small push in, which cuts a line rather than only tightening one. Ctrl raises a ridge instead.", "A panel line that got rounded off."],
+          ["Inflate", "Pushes the surface out along its own direction at every point, so a thin part thickens and keeps its shape. Ctrl pulls it in.", "A barrel or a limb too thin to print."],
+          ["Build up", "Lays a smooth mound along one direction instead of following every wrinkle. Ctrl carves the same shape inwards.", "Rebuilding a chipped corner."],
+          ["Grab", "Drags the surface along with the brush while the rim stays put. The same tool as Move in Polygons mode.", "Pull a dented nose tip back out."],
           ["Protect", "Not a shaping brush: it paints the area the others must leave alone, and Ctrl rubs that out again. Clear and Invert are under the brush settings.", "Paint a crisp panel edge, then smooth the lumps right up against it without rounding it off."],
         ],
       },
@@ -164,7 +169,8 @@ export const EDIT3D_HELP = {
       table: {
         headers: ["Key", "Does"],
         rows: [
-          ["B D L P I M E O", "Select, Deselect, Lasso, Panel, Piece, Move, Sharpen edge, Fill hole (any of them switches to Polygons mode)"],
+          ["B D L P I M E O", "In Polygons mode: Select, Deselect, Lasso, Panel, Piece, Move, Sharpen edge, Fill hole. Pressing one from another mode takes you there."],
+          ["S V T C N R I B G P", "In Sculpt mode: Smooth, Even out, flaTten, sCrape, piNch, cRease, Inflate, Build up, Grab, Protect. Each mode has its own letters, so the same key means the brush here and the tool there."],
           ["1 / Ctrl+1", "Front / Back"],
           ["3 / Ctrl+3", "Right / Left"],
           ["7 / Ctrl+7", "Top / Bottom"],

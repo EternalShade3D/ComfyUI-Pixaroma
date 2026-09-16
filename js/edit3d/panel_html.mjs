@@ -20,6 +20,11 @@ export const ICONS = {
   flatten: '<svg viewBox="0 0 24 24"><path d="M3 9h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4 16c2-3 4 1 6-1s4 2 6-1 2 1 4 0" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".55"/></svg>',
   scrape: '<svg viewBox="0 0 24 24"><path d="M3 15h7l2-5 2 5h7" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".55"/><path d="M2 9h20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
   protect: '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>',
+  pinch: '<svg viewBox="0 0 24 24"><path d="M3 12h6M21 12h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 8l2.5 4L7 16M17 8l-2.5 4L17 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>',
+  crease: '<svg viewBox="0 0 24 24"><path d="M3 7h6l3 9 3-9h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  inflate: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 5V2M12 22v-3M5 12H2M22 12h-3M7.5 7.5L5.5 5.5M18.5 18.5l-2-2M16.5 7.5l2-2M5.5 18.5l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+  buildup: '<svg viewBox="0 0 24 24"><path d="M2 18c4 0 5-9 10-9s6 9 10 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  grab: '<svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
 export const TOOLS = [

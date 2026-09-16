@@ -93,6 +93,53 @@ export function installSculpt(ed) {
     return true;
   }
 
+  /** Grab holds the points it caught at the press, with their weights, and moves them by the drag. A mirrored set
+   *  flips its own axis so both sides pull outwards together. */
+  function buildGrab(hit, lock) {
+    const m = ed.model, r = ed.brushRadius(), r2 = r * r, sets = [];
+    const collect = (c, cam, flip) => {
+      const idx = [], w = [];
+      m.pointsNear(c.x, c.y, c.z, r, (p, d2) => {
+        if (!m.ptVis[p] || !P.facing(m, p, cam)) return;
+        if (lock === "protect" && m.sel[p]) return;
+        if (lock === "only" && !m.sel[p]) return;
+        const k = 1 - d2 / r2;
+        idx.push(p);
+        w.push(k * k);
+      });
+      if (idx.length) sets.push({ idx: Int32Array.from(idx), w: Float32Array.from(w), flip });
+    };
+    collect(hit.point, view.camera.position, -1);
+    const a = P.symAxis();
+    // Only when the brush is off the symmetry plane, or the two halves would pull the same points twice.
+    if (a >= 0 && Math.abs(hit.point.getComponent(a) - ed.symC[a]) > r * 0.5) {
+      collect(P.reflect(hit.point, a, ed.symC[a]), P.reflect(view.camera.position, a, ed.symC[a]), a);
+    }
+    if (!sets.length) return null;
+    const touched = new Int32Array(sets.reduce((n, s) => n + s.idx.length, 0));
+    let o = 0;
+    for (const s of sets) { touched.set(s.idx, o); o += s.idx.length; }
+    const normal = view.camera.getWorldDirection(V3()).negate();
+    return { start: hit.point.clone(), sets, touched, plane: new THREE.Plane().setFromNormalAndCoplanarPoint(normal, hit.point) };
+  }
+
+  function applyGrab(ev) {
+    const g = stroke.grab, m = ed.model, pos = m.pos, B = stroke.snap.pos;
+    if (!view.rayAt(ev.clientX, ev.clientY).intersectPlane(g.plane, _c)) return false;
+    const d = [_c.x - g.start.x, _c.y - g.start.y, _c.z - g.start.z];
+    for (const s of g.sets) {
+      for (let i = 0; i < s.idx.length; i++) {
+        const p = 3 * s.idx[i], k = s.w[i];
+        for (let c = 0; c < 3; c++) pos[p + c] = B[p + c] + (c === s.flip ? -d[c] : d[c]) * k;
+      }
+    }
+    m.refreshLocal(g.touched);
+    for (const p of g.touched) stroke.touched.add(p);
+    stroke.moved = true;
+    view.requestDraw();
+    return true;
+  }
+
   function onDown(ev) {
     if (ev.button !== 0 || !sculpting()) return;
     const m = ed.model;
@@ -104,8 +151,16 @@ export function installSculpt(ed) {
     m.ensureGrid(ed.brushRadius());
     // Reading the selection once per stroke, not once per stamp: selectedCount walks every point.
     const lock = m.selectedCount() ? ed.prefs.lock : "off";
-    const paints = !!brushById(ed.prefs.brushId).paints;
-    stroke = { snap: paints ? null : m.snapshot("pos"), touched: new Set(), moved: false, last: hit.point.clone(), lock };
+    const brush = brushById(ed.prefs.brushId);
+    const paints = !!brush.paints;
+    stroke = { snap: paints ? null : m.snapshot("pos"), touched: new Set(), moved: false, last: hit.point.clone(), lock, grab: null };
+    if (brush.grabs) {
+      stroke.grab = buildGrab(hit, lock);
+      if (!stroke.grab) { stroke = null; return; }
+      lastEv = ev;
+      P.capture(ev);
+      return;
+    }
     lastEv = ev;
     P.capture(ev);
     paint(hit.point, ev.ctrlKey || ev.metaKey);
@@ -122,11 +177,15 @@ export function installSculpt(ed) {
     if (!ev || !m || !sculpting()) return;
     if (stroke && !(ev.buttons & 1)) { finish(); return; }
     if (ed.showingBefore || ed.busy || ev.buttons & 6) { P.hideRings(); return; }
+    // A Grab drag follows the pointer even once it has left the surface, so it must not need a hit to carry on.
+    if (stroke && stroke.grab) { applyGrab(ev); return; }
     const hit = P.hitAt(ev.clientX, ev.clientY);
     if (!hit) { P.hideRings(); return; }
     const r = ed.brushRadius(), invert = ev.ctrlKey || ev.metaKey;
-    P.drawRing(ev, hit.point, r, brushById(ed.prefs.brushId).paints ? (invert ? " remove" : " mask") : invert ? " remove" : " sculpt");
+    const brush = brushById(ed.prefs.brushId);
+    P.drawRing(ev, hit.point, r, brush.paints ? (invert ? " remove" : " mask") : brush.grabs ? " move" : invert ? " remove" : " sculpt");
     if (!stroke) return;
+    if (stroke.grab) { applyGrab(ev); return; }
     // Stamped along the way, so a fast drag is one stroke and not a row of dabs.
     const d = stroke.last.distanceTo(hit.point), stepLen = r * SPACING;
     if (d > stepLen && d < r * MAX_BRIDGE) {
