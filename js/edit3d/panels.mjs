@@ -70,6 +70,7 @@ export function buildPanels(ed) {
     sym: [() => ed.prefs.symmetry, (v) => ed.setSymmetry(v)],
     view: [() => (ed.showingBefore ? "before" : "after"), (v) => ed.setBeforeAfter(v)],
     cracks: [() => String(ed.opts.cracks), (v) => { ed.opts.cracks = Number(v); }],
+    holeSize: [() => String(ed.opts.holeSize), (v) => { ed.opts.holeSize = Number(v); }],
     quads: [() => String(ed.opts.quads), (v) => { ed.opts.quads = Number(v); }],
     reduce: [() => String(ed.opts.reduce), (v) => { ed.opts.reduce = Number(v); }],
     solid: [() => String(ed.opts.solid), (v) => { ed.opts.solid = Number(v); }],
@@ -116,6 +117,26 @@ export function buildPanels(ed) {
     if (s.hidden) parts.push(`${fmtInt(s.hidden)} hidden`);
     return parts.join(" · ");
   };
+  /**
+   * How many holes the Fill holes button can actually close: the rims it can walk around, counted the SAME way the
+   * button counts them, so the panel and the button can never disagree. A count of open EDGES (369) reads as a
+   * disaster when the model has 11 holes, and an edge-cluster count says something different again (20).
+   * Cached on the model, because refreshInfo runs after every edit and a walk is not free.
+   */
+  const rims = (m) => {
+    if (!ed.ops) return { n: -1, edges: 0 };
+    const key = `${m.stats.open}:${m.stats.alive}:${m.F}:${m.P}`;
+    if (m._pixRims && m._pixRims.key === key) return m._pixRims;
+    let n = 0, edges = 0;
+    try {
+      for (const l of ed.ops.allLoops()) { n++; edges += l.length; }
+    } catch (_e) {
+      return { n: -1, edges: 0 };
+    }
+    m._pixRims = { key, n, edges };
+    return m._pixRims;
+  };
+
   const ui = {
     els,
     refreshInfo() {
@@ -123,7 +144,8 @@ export function buildPanels(ed) {
       if (m) {
         const n = m.selectedCount();
         els.selCount.textContent = n ? `${fmtInt(n)} points selected` : "Nothing selected";
-        els.holeBadge.textContent = `${fmtInt(m.stats.open)} open edges`;
+        const r = ed.prefs.mode === "model" ? rims(m) : null;
+        els.holeBadge.textContent = !r || r.n < 0 ? "" : r.n ? `${fmtInt(r.n)} hole${r.n === 1 ? "" : "s"}` : m.stats.open ? "no rim to walk" : "none";
         els.looseBadge.textContent = `${fmtInt(m.stats.tiny)} tiny`;
       }
       ui.renderCheck();
@@ -134,7 +156,7 @@ export function buildPanels(ed) {
     /** Model check: what is wrong with this model, and which button fixes it. */
     renderCheck() {
       const m = ed.model, box = els.check;
-      if (!box) return;
+      if (!box || ed.prefs.mode !== "model") return; // only Whole model shows it, so the count is never paid for twice
       if (!m) {
         box.innerHTML = '<div class="pix-e3d-check-row dim"><span>Waiting for the model</span></div>';
         return;
@@ -146,9 +168,13 @@ export function buildPanels(ed) {
         ["Pieces", fmtInt(s.pieces), s.tiny ? "warn" : "ok", s.tiny
           ? `${fmtInt(s.tiny)} of them are specks of under 8 faces. Remove loose bits clears them.`
           : "Every separate piece is big enough to be a real part of the model."],
-        ["Holes", fmtInt(s.open) + " open edges", s.open ? "warn" : "ok", s.open
-          ? "Fill small holes closes the small ones. A big opening needs the Fill hole tool in Polygons mode."
-          : "The surface is closed: no open edges."],
+        ["Holes", (() => { const r = rims(m); return r.n > 0 ? fmtInt(r.n) : s.open ? "none to fill" : "none"; })(), s.open ? "warn" : "ok", (() => {
+          if (!s.open) return "The surface is closed: no open edges.";
+          const r = rims(m), strays = Math.max(0, s.open - r.edges);
+          return `${fmtInt(s.open)} open edges in all, forming ${fmtInt(Math.max(0, r.n))} rim${r.n === 1 ? "" : "s"} that Fill holes can close at the size beside it`
+            + `${strays ? `, plus ${fmtInt(strays)} open edges that form no rim at all and need Make solid` : ""}.`
+            + " Removing the skin hidden inside opens the seam where the two skins met, so this goes UP after a clean up, and that is normal.";
+        })()],
         ["Broken edges", fmtInt(s.broken), s.broken ? "warn" : "ok", s.broken
           ? "More than two faces share an edge, which a 3D printer cannot read. Make solid rebuilds the model as one clean solid."
           : "No edge is shared by more than two faces."],
@@ -280,7 +306,7 @@ function renderOptions(ed, bar) {
     bar.innerHTML = `<span class="pix-e3d-chip a${a ? " on" : ""}">Panel A${a ? " picked" : ""}</span><span class="pix-e3d-chip b${bb ? " on" : ""}">Panel B${bb ? " picked" : ""}</span>`
       + sep + hint("Click a panel, then the panel next to it, then press Sharpen edges on the right. A third click starts again.");
   } else {
-    bar.innerHTML = hint(`Red dots are open edges (holes), yellow dots broken edges${m ? `: ${fmtInt(m.stats.open)} open and ${fmtInt(m.stats.broken)} broken on this model` : ""}. Click next to a hole to close it; Fill small holes in Whole model closes all the small ones.`);
+    bar.innerHTML = hint(`Red dots are open edges (holes), yellow dots broken edges${m ? `: ${fmtInt(m.stats.open)} open and ${fmtInt(m.stats.broken)} broken on this model` : ""}. Click next to a hole to close it; Fill holes in Whole model mode closes them by size.`);
   }
   for (const s of bar.querySelectorAll('[data-seg="through"]')) {
     for (const x of s.querySelectorAll("button")) {

@@ -7,7 +7,12 @@ import { fmtInt } from "./core.mjs";
 
 const MAX_STEPS = 30;
 const BUDGET = 600 * 1024 * 1024; // bytes the History may hold before its oldest steps go
-const SMALL_HOLE = 16; // edges: the most Fill small holes closes (Tidy's rule)
+const SMALL_HOLE = 16; // edges: the size Quick clean up closes (Tidy's rule)
+// How far a boundary walk may run before it gives up. It is NOT the size filter: a loop only exists once its walk
+// CLOSES, so walking with a small cap abandons every longer border AND the small loops that border splits into.
+// Measured on the Ep34 gun after Quick clean up: a cap of 16 returned NO loops at all while a cap of 60 returned 17,
+// four of them 6 edges or under. Always walk with this cap and filter the ANSWER by size.
+const WALK_CAP = 4000;
 const BIG_HOLE = 600; // edges: the most one Fill hole click closes
 const LOOSE = 8; // faces: a separate piece smaller than this is a loose bit
 const LINE_REACH = 0.015; // of the longest side (1.5 mm on a 100 mm print): how far a rounded edge may lie from its crease
@@ -167,10 +172,16 @@ export class Ops {
   }
 
   // ── holes ──
-  loops(maxLen, accept = null) {
+  /** The holes whose rim is no longer than `sizeMax` edges. See WALK_CAP: the cap and the size filter are not the
+   *  same thing, and using the size as the cap is how small holes went missing. */
+  loops(sizeMax, accept = null) {
     const m = this.ed.model;
-    return boundaryLoops(null, m.P, m.counts, m.indices, m.alive, maxLen, accept).loops;
+    const all = boundaryLoops(null, m.P, m.counts, m.indices, m.alive, WALK_CAP, accept).loops;
+    return sizeMax >= WALK_CAP ? all : all.filter((l) => l.length <= sizeMax);
   }
+
+  /** Every hole the editor can walk around, whatever its size. */
+  allLoops() { return this.loops(WALK_CAP); }
 
   /** Close loops: up to 4 corners one polygon, a fan around the middle otherwise. -> faces added */
   fill(loops) {
@@ -225,11 +236,23 @@ export class Ops {
     return { n, shown };
   }
 
-  /** Closes every hole of up to SMALL_HOLE edges. -> {holes, faces} or null. */
-  _fillSmallBody() {
-    const loops = this.loops(SMALL_HOLE).filter((l) => l.length <= SMALL_HOLE);
+  /** Closes every hole whose rim is up to `sizeMax` edges. -> {holes, faces} or null. */
+  _fillHolesBody(sizeMax) {
+    const loops = this.loops(sizeMax);
     if (!loops.length) return null;
     return { holes: loops.length, faces: this.fill(loops) };
+  }
+
+  /** Fills again while it keeps finding holes: closing one rim can leave a small new one beside it. */
+  _fillRepeat(sizeMax, passes = 3) {
+    let holes = 0, faces = 0;
+    for (let i = 0; i < passes; i++) {
+      const r = this._fillHolesBody(sizeMax);
+      if (!r) break;
+      holes += r.holes;
+      faces += r.faces;
+    }
+    return holes ? { holes, faces } : null;
   }
 
   /** Drops the separate pieces under LOOSE faces. -> faces removed (0 when there are none). */
@@ -248,17 +271,22 @@ export class Ops {
     }, "Looking at the model from 96 sides...");
   }
 
-  fillSmall() {
+  fillHoles() {
     return this.run(() => {
-      const r = this._fillSmallBody();
+      const size = this.ed.opts.holeSize;
+      const r = this._fillRepeat(size);
       if (!r) {
-        this.toast(this.ed.model.stats.open
-          ? `Every hole left is longer than ${SMALL_HOLE} edges. Close a big one with the Fill hole tool in Polygons mode.`
-          : "This model has no holes.");
+        const left = this.allLoops().length;
+        this.toast(left
+          ? `Every hole left has a rim longer than ${size} edges. Choose a bigger size beside this button, close one by hand with the Fill hole tool in Polygons mode, or press Make solid.`
+          : this.ed.model.stats.open
+            ? "The open edges left do not form a rim the editor can walk around, which happens where faces meet in threes. Make solid rebuilds the model as one closed solid."
+            : "This model has no holes to close.");
         return false;
       }
-      return `Fill small holes (${fmtInt(r.holes)} holes, ${fmtInt(r.faces)} faces)`;
-    }, "Filling the small holes...", "all");
+      const left = this.allLoops().length;
+      return `Fill holes (${fmtInt(r.holes)} closed, ${fmtInt(r.faces)} faces${left ? `, ${fmtInt(left)} left`: ""})`;
+    }, "Filling the holes...", "all");
   }
 
   removeLoose() {
@@ -278,20 +306,28 @@ export class Ops {
       const inside = await this._insideBody((f) => ed.ui.setBusy(`Quick clean up 1 of 3: looking from 96 sides... ${Math.round(f * 100)}%`));
       if (!ed.isOpen() || !ed.model) return false; // closed while the GPU pass ran
       await step("Quick clean up 2 of 3: filling the small holes...");
-      const holes = this._fillSmallBody();
+      const holes = this._fillRepeat(SMALL_HOLE);
       await step("Quick clean up 3 of 3: removing the loose bits...");
       const loose = this._looseBody();
+      const left = this.allLoops().length;
       const parts = [];
       if (inside) parts.push(`${fmtInt(inside.n)} faces inside`);
       if (holes) parts.push(`${fmtInt(holes.holes)} holes`);
       if (loose) parts.push(`${fmtInt(loose)} loose faces`);
       if (!parts.length) {
-        this.toast("This model is already clean: nothing hidden inside, no small holes, no loose bits.");
+        this.toast(left
+          ? `Nothing was hidden inside and there are no small holes or loose bits, but ${fmtInt(left)} bigger hole${left > 1 ? "s are" : " is"} still open. Fill holes at a bigger size closes ${left > 1 ? "them" : "it"}, and Make solid always gives one closed solid.`
+          : "This model is already clean: nothing hidden inside, no holes, no loose bits.");
         return false;
       }
+      // Removing the skin inside OPENS the seam where the two skins met, so a cleaned model usually has MORE open
+      // edges than it started with. Say so and name the next button, or it reads as a job half done.
       this.toast(`Quick clean up: ${inside ? `${fmtInt(inside.n)} faces that can never be seen from outside are gone (${Math.round((100 * inside.n) / inside.shown)}% of the model)` : "nothing was hidden inside"}, `
-        + `${holes ? `${fmtInt(holes.holes)} small holes closed` : "no small holes to close"}, ${loose ? `${fmtInt(loose)} loose faces removed` : "no loose bits"}.`, 9000);
-      return `Quick clean up (${parts.join(", ")})`;
+        + `${holes ? `${fmtInt(holes.holes)} small holes closed` : "no small holes to close"}, ${loose ? `${fmtInt(loose)} loose faces removed` : "no loose bits"}. `
+        + (left
+          ? `${fmtInt(left)} bigger hole${left > 1 ? "s" : ""} left where the skin inside was cut away: press Fill holes at Medium or Any size, or Make solid for printing.`
+          : "No holes left."), 12000);
+      return `Quick clean up (${parts.join(", ")}${left ? `, ${fmtInt(left)} holes left` : ""})`;
     }, "Quick clean up...", "all");
   }
 

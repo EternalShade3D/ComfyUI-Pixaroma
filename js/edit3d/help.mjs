@@ -10,7 +10,7 @@ export const EDIT3D_HELP = {
       body:
         "3D models made by AI (Pixal3D, Trellis 2, Hunyuan 3D) come out with a hidden second skin inside, small holes, loose specks, " +
         "wavy flat panels and soft edges. Edit 3D opens the model in a fullscreen editor with a mode for each kind of work: " +
-        "Whole model, where one press fixes everything at once (Remove inside surfaces, Fill small holes, Quads, Make solid...), " +
+        "Whole model, where one press fixes everything at once (Remove inside surfaces, Fill holes, Quads, Make solid...), " +
         "and Polygons, where you pick exactly the faces you mean and fix only those (Flatten a wavy panel, Sharpen an edge, " +
         "Delete a loose piece). Nothing changes that you did not ask for, and every step can be undone.",
     },
@@ -19,7 +19,8 @@ export const EDIT3D_HELP = {
       bullets: [
         "Pick a model on the node, press Upload to add one, or wire a mesh (from Pixal3D or Trellis 2) or a model_3d (from Load 3D Pixaroma) into it. A wired model needs one Run first.",
         "Press Open Edit 3D. It opens in Whole model mode, and Model check on the left says what this model needs.",
-        "Press Quick clean up. That is Remove inside surfaces, Fill small holes and Remove loose bits in one press, and one Undo takes all three back.",
+        "Press Quick clean up. That is Remove inside surfaces, Fill holes at Small and Remove loose bits in one press, and one Undo takes all three back. It then says how many bigger holes are left, because cutting the skin away from inside opens the seam where the two skins met.",
+        "If holes are left, press Fill holes again at Medium or Any size. For a 3D print, press Make solid: that one always gives a single closed solid.",
         "Switch to Polygons mode for what still looks wrong: pick an area with a tool on the left, then press a button under Fix the selection.",
         "Press Save. The editor closes, the node shows a picture of your edit, and the next Run hands the edited model on. Save to Disk writes a file into output/3d instead.",
       ],
@@ -97,9 +98,9 @@ export const EDIT3D_HELP = {
       table: {
         headers: ["Button", "What it does", "Example"],
         rows: [
-          ["Quick clean up", "Remove inside surfaces, Fill small holes and Remove loose bits, in that order, in one press. It counts as one step, so one Undo takes all three back.", "The first thing to press on a fresh Pixal3D or Trellis 2 model."],
+          ["Quick clean up", "Remove inside surfaces, Fill holes at Small and Remove loose bits, in that order, in one press. It counts as one step, so one Undo takes all three back, and it says what is left to do.", "The first thing to press on a fresh Pixal3D or Trellis 2 model."],
           ["Remove inside surfaces", "Removes every face that can never be seen from outside: the second skin AI models carry inside. Often more than half the model.", "First button on any Pixal3D or Trellis 2 model."],
-          ["Fill small holes", "Closes every hole of up to 16 edges and leaves big openings alone. Close a big one with the Fill hole tool.", "After Remove inside surfaces, to seal the pinholes."],
+          ["Fill holes", "Closes the holes whose rim is no longer than the size beside it (Small is 16 edges, Medium 60, Any size closes every rim it can walk around), and fills again while it keeps finding them. A big opening is closed with a flat cap, so look at it afterwards.", "After Remove inside surfaces: Small first, then Medium for whatever is left."],
           ["Remove loose bits", "Removes separate pieces smaller than 8 faces.", "The specks floating around a generated character."],
           ["Close cracks", "Joins open edges that almost touch (within the chosen share of the model's size), then closes the small gaps left.", "A model spliced from several views, at 0.25%."],
           ["Quads", "Lays a clean grid of quads over the whole model, following its crisp edges. 200K keeps small details, 50K is light.", "Before sending a model to Blender or a game engine."],
@@ -154,6 +155,8 @@ export const EDIT3D_HELP = {
         "The editor keeps the colour texture of a model. A PBR model's other maps (normal, roughness, metal) are not kept, so an edited PBR model looks a little flatter in a renderer that uses them.",
         "Quads, Reduce polygons, Make solid and Make both sides match run through ComfyUI's queue: while a generation is running they wait for it, and the page pauses for a few seconds while Quads works.",
         "When the model wired in changes (a new generation, say), the node passes it on unedited and says so: open the editor and edit the new model.",
+        "A cleaned model usually shows MORE open edges than it started with, and that is normal: an AI model is two skins, one inside the other, and removing the inner one opens the seam where they met. Those openings are real holes in what is left, so Fill holes closes the ones it can walk around and Make solid closes the rest.",
+        "Some open edges belong to no rim at all, where faces meet in threes. Nothing that walks a hole can close those; Make solid rebuilds the model and is the answer for printing.",
         "Close cracks can leave a few broken edges, where three faces now share one edge. For 3D printing, finish with Make solid, which always gives one closed solid.",
         "FBX and PLY files open in the editor, and need one Save before the node can hand them on.",
         "Saved edits live in input/pixaroma_edit3d. Models above about 1.5 million triangles work, but slowly: Reduce polygons first.",
