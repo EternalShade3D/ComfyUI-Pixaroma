@@ -1,9 +1,9 @@
 // Edit 3D Pixaroma - the edits that run in the browser (Flatten, Smooth, Straighten, Sharpen edges, Delete, the fills,
 // Remove inside surfaces, Remove loose bits, Close cracks) and the History behind Undo / Redo. Every edit is one step:
 // a snapshot before, the label after. The heavy buttons are in jobs.mjs and land here as one step too.
-import { flattenSelection, smoothSelection, sharpenEdge } from "./geometry.mjs";
+import { flattenSelection, smoothSelection, sharpenEdge, symmetriseSelection } from "./geometry.mjs";
 import { boundaryLoops, fanFill, dropLoosePieces, closeCracks } from "./topology.mjs";
-import { fmtInt } from "./core.mjs";
+import { fmtInt, SYM_AXES } from "./core.mjs";
 
 const MAX_STEPS = 30;
 const BUDGET = 600 * 1024 * 1024; // bytes the History may hold before its oldest steps go
@@ -136,6 +136,30 @@ export class Ops {
     if (r.left) extra.push(`${fmtInt(r.left)} facing another way left alone`);
     if (r.skipped) extra.push(`${r.skipped} area${r.skipped > 1 ? "s" : ""} too far off`);
     return `${snapToAxis ? "Straighten" : "Flatten"} (${fmtInt(r.moved)} points${extra.length ? ", " + extra.join(", ") : ""})`;
+  }
+
+  /**
+   * Make the selection match itself across the symmetry plane. Point-moving only, so a "pos" snapshot undoes it and
+   * no polygon can be harmed. The AXIS comes from the Symmetry switch the Selection panel already has, rather than
+   * from a second picker of its own: one axis control for the whole mode is the thing to keep.
+   */
+  symmetrise() {
+    const ed = this.ed, a = SYM_AXES.indexOf(ed.prefs.symmetry) - 1;
+    if (a < 0) {
+      this.toast("Pick an axis under Symmetry first: X, Y or Z. Make symmetric folds the selection across that plane.");
+      return false;
+    }
+    return this.run(() => {
+      const m = ed.model;
+      if (!m.selectedCount()) { this.needSelection(); return false; }
+      const r = symmetriseSelection(m.pos, m.sel, m.ptVis, m.adj, a, ed.symC[a], { strength: ed.opts.symStrength });
+      if (!r.moved) {
+        this.toast("Nothing in the selection has a matching point on the other side of the plane, so there was nothing to average.");
+        return false;
+      }
+      const extra = r.lone ? `, ${fmtInt(r.lone)} with no partner left alone` : "";
+      return `Make symmetric (${fmtInt(r.moved)} points${extra})`;
+    }, "Making it symmetric...");
   }
 
   smooth() {

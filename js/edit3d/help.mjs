@@ -138,6 +138,21 @@ export const EDIT3D_HELP = {
       ],
     },
     {
+      heading: "Polygons mode: make a part symmetric",
+      body:
+        "MAKE SYMMETRIC folds the selection across the symmetry plane. Every selected point is paired with the point "
+        + "nearest its mirror INSIDE the selection, and the pair moves to the middle, so the two sides end up matching "
+        + "each other. Pick an axis under Symmetry first (X, Y or Z) or the button will say so.\n\n"
+        + "It only moves points: not one face is added, removed or re-cut, so it can never break the mesh, and one "
+        + "Undo puts it back. A point whose mirror finds nothing is left exactly where it is and counted in the "
+        + "History line, because quietly dragging a lone point somewhere is worse than leaving it alone.\n\n"
+        + "Strength is how far the two sides move together: 100% makes them match exactly, less closes part of the "
+        + "difference. Example: one side of a grip came out fatter than the other, so Lasso the grip, Symmetry X, "
+        + "then Make symmetric.\n\n"
+        + "This is the one for a PART. To make the WHOLE model match, use Make both sides match in Whole model, which "
+        + "copies one side onto the other instead of averaging them.",
+    },
+    {
       heading: "Polygons mode: fix the selection",
       table: {
         headers: ["Button", "What it does", "Example"],

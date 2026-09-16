@@ -63,7 +63,7 @@ class Edit3DEditor {
     this.state = readState(node);
     this.prefs = { ...sanitizePrefs(this.state.prefs) };
     this.opts = {
-      flat: 12, flatStrength: 1, smoothStrength: 0.5, cracks: 0.25, holeSize: 16, quads: 200000, reduce: 50, solid: 384,
+      flat: 12, flatStrength: 1, smoothStrength: 0.5, symStrength: 1, cracks: 0.25, holeSize: 16, quads: 200000, reduce: 50, solid: 384,
       mirrorAxis: "x", mirrorSide: "positive", fmt: "auto", name: "edit3d", turnY: 0, center: true,
     };
     this.tool = "select";

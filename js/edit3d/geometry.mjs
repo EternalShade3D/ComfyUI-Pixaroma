@@ -1,7 +1,7 @@
 // Edit 3D Pixaroma - the geometry maths, pure (no three, no DOM). Ported from output/claude_output/edit3d_idea/app.mjs,
 // where every function was tested on the Ep34 gun. Positions are Float32Array(3P); triangle corners `cp` are Int32Array(3T)
 // over the WELDED points; `alive`/`vis` are Uint8Array per triangle; `sel` and marks are Uint8Array(P).
-export const _testHooks = { flatWeights: true, dominantRounds: 3 };
+export const _testHooks = { flatWeights: true, dominantRounds: 3, symTwoPass: true };
 export const COS_CREASE = Math.cos((30 * Math.PI) / 180);
 export const COS35 = Math.cos((35 * Math.PI) / 180);
 export const COS15 = Math.cos((15 * Math.PI) / 180);
@@ -167,6 +167,104 @@ export const distTo = (pos, p, pl) => (pos[3 * p] - pl.cx) * pl.nx + (pos[3 * p 
 export function moveOnto(pos, p, pl, k = 1) {
   const d = distTo(pos, p, pl) * k;
   pos[3 * p] -= pl.nx * d; pos[3 * p + 1] -= pl.ny * d; pos[3 * p + 2] -= pl.nz * d;
+}
+
+/**
+ * Make a selection match itself across a plane: every selected point is paired with the selected point nearest its
+ * MIRROR, and the pair moves to the average of the two. Point-moving only - not one polygon changes - so it can
+ * never break the mesh and a plain positions snapshot undoes it.
+ *
+ * Why AVERAGE and not copy one side onto the other: copying replaces geometry, which on a PARTIAL selection means
+ * cutting and stitching at the selection border. Averaging fixes the case people actually have (a part that came out
+ * lopsided) at no risk to the mesh, and whole-model Mirror already does the copy when one side is truly wrong.
+ *
+ * The pairing distance is measured in EDGE LENGTHS of the selection, not in model units, so the same setting works
+ * on a dense patch and a coarse one. A point whose mirror finds nothing is left alone and counted, because silently
+ * dragging an unpaired point somewhere is worse than leaving it.
+ *
+ * `axis` 0/1/2 and `c` the plane's coordinate on it. -> { moved, paired, lone, onPlane }
+ */
+export function symmetriseSelection(pos, sel, vis, adj, axis, c, opts = {}) {
+  const P = sel.length, { nbOff, nb } = adj, pts = [];
+  for (let p = 0; p < P; p++) if (sel[p] && vis[p]) pts.push(p);
+  if (pts.length < 3) return { moved: 0, paired: 0, lone: 0, onPlane: 0 };
+  const mir = (v, i) => (i === axis ? 2 * c - v : v);
+
+  // The scale: the average edge INSIDE the selection. A mirror never lands exactly on another point, so the pairing
+  // needs a radius, and one measured in edges means the caller's number means the same thing on any density.
+  let sum = 0, n = 0;
+  for (const p of pts) {
+    for (let j = nbOff[p], e = nbOff[p + 1]; j < e; j++) {
+      const q = nb[j];
+      if (!sel[q] || !vis[q]) continue;
+      sum += Math.hypot(pos[3 * p] - pos[3 * q], pos[3 * p + 1] - pos[3 * q + 1], pos[3 * p + 2] - pos[3 * q + 2]);
+      n++;
+    }
+  }
+  const avg = n ? sum / n : 0;
+  const tol = (opts.tolEdges ?? 1.5) * (avg || 1e-6), cell = tol, t2 = tol * tol;
+
+  const grid = new Map();
+  const key = (x, y, z) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+  for (const p of pts) {
+    const k = key(pos[3 * p], pos[3 * p + 1], pos[3 * p + 2]);
+    const list = grid.get(k);
+    if (list) list.push(p); else grid.set(k, [p]);
+  }
+  const nearest = (x, y, z) => {
+    let best = -1, bd = t2;
+    const ix = Math.floor(x / cell), iy = Math.floor(y / cell), iz = Math.floor(z / cell);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      const list = grid.get(`${ix + dx},${iy + dy},${iz + dz}`);
+      if (!list) continue;
+      for (const q of list) {
+        const ex = pos[3 * q] - x, ey = pos[3 * q + 1] - y, ez = pos[3 * q + 2] - z;
+        const d2 = ex * ex + ey * ey + ez * ez;
+        if (d2 <= bd) { bd = d2; best = q; }
+      }
+    }
+    return best;
+  };
+
+  const mark = new Uint8Array(P);
+  for (const p of pts) mark[p] = 1;
+  const w = weightsInside(P, mark, nbOff, nb);
+  const k = opts.strength ?? 1;
+  const target = new Float32Array(3 * pts.length), has = new Uint8Array(pts.length);
+  let paired = 0, lone = 0, onPlane = 0, moved = 0;
+
+  // EVERY target is measured against the untouched positions and applied only afterwards. Moving a point would
+  // change the answer for its own partner, so a one-pass version depends on which of the pair is visited first -
+  // and a symmetry tool whose result depends on iteration order is not a symmetry tool.
+  const twoPass = _testHooks.symTwoPass;
+  const put = (i, p) => {
+    const f = k * w[p];
+    const dx = target[3 * i] - pos[3 * p], dy = target[3 * i + 1] - pos[3 * p + 1], dz = target[3 * i + 2] - pos[3 * p + 2];
+    if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < 1e-12) return;
+    pos[3 * p] += dx * f; pos[3 * p + 1] += dy * f; pos[3 * p + 2] += dz * f;
+    moved++;
+  };
+
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], x = pos[3 * p], y = pos[3 * p + 1], z = pos[3 * p + 2];
+    const q = nearest(mir(x, 0), mir(y, 1), mir(z, 2));
+    if (q < 0) { lone++; continue; }
+    if (q === p) {
+      // its own mirror: the point lives ON the plane, so put it exactly there
+      target[3 * i] = x; target[3 * i + 1] = y; target[3 * i + 2] = z;
+      target[3 * i + axis] = c;
+      onPlane++;
+    } else {
+      target[3 * i] = (x + mir(pos[3 * q], 0)) / 2;
+      target[3 * i + 1] = (y + mir(pos[3 * q + 1], 1)) / 2;
+      target[3 * i + 2] = (z + mir(pos[3 * q + 2], 2)) / 2;
+      paired++;
+    }
+    has[i] = 1;
+    if (!twoPass) put(i, p);
+  }
+  if (twoPass) for (let i = 0; i < pts.length; i++) if (has[i]) put(i, pts[i]);
+  return { moved, paired, lone, onPlane };
 }
 
 /** Flatten (or Straighten with snapToAxis) every group of the selection onto its dominant panel's plane.
