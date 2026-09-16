@@ -31,7 +31,12 @@ _FINGERPRINT_POINTS = 4096
 SAMPLE_BYTES = 65536
 
 OPS = ("quads", "solid", "mirror", "reduce")
-QUAD_COUNTS = (50000, 100000, 200000)
+# 10K and 25K exist so there is a QUAD-PRESERVING way DOWN. Reduce polygons triangulates (it is core's QEM
+# decimation, a triangle algorithm, exactly as Blender's Collapse decimate does), so before these rungs a model
+# already at 48K quads had no way to get lighter and keep its quads at all: the lowest target was 50K. Adding them
+# here is what makes the advice in the Reduce tooltip true - `_pick` silently falls back to the default for any
+# value not in this tuple, so a chip the browser offers and this list lacks would quietly run 200K instead.
+QUAD_COUNTS = (10000, 25000, 50000, 100000, 200000)
 SOLID_DETAILS = (256, 384, 512)
 MIRROR_AXES = ("x", "y", "z")
 MIRROR_SIDES = ("positive", "negative")

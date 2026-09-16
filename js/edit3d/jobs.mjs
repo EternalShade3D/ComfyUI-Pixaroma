@@ -74,12 +74,19 @@ export async function runHeavy(ed, op) {
     const src = readObj(new TextDecoder().decode(buf));
     if (!src.counts.length) throw new Error("the result has no faces");
     const snap = m.snapshot("all");
+    // BEFORE replaceWith: the old counts are gone after it, and losing quads is the one thing a user must never
+    // find out by noticing it later. Reduce is core's QEM decimation, a triangle algorithm, so a quad model always
+    // comes back triangulated - normal for this kind of tool, but never something to leave unsaid.
+    const quadsBefore = m.stats.quads;
     m.replaceWith({ positions: src.positions, counts: src.counts, indices: src.indices, colours: src.colours, uvs: null, texture: null, polys: true });
     ed.symC = m.center.slice();
     const label = labelFor(op, params, answer);
     ed.ops.push(snap, label);
     ed.afterGeometry();
-    ed.ui.toast(answer.stats?.note ? `${label}. ${answer.stats.note}` : `${label}: done in ${answer.seconds} s.`, 7000);
+    const lostQuads = quadsBefore > 0 && m.stats.quads === 0
+      ? ` Your ${fmtInt(quadsBefore)} quads are now triangles: that is what this kind of reducing does. To get a lighter model that KEEPS its quads, undo and press Quads at a lower number instead.`
+      : "";
+    ed.ui.toast((answer.stats?.note ? `${label}. ${answer.stats.note}` : `${label}: done in ${answer.seconds} s.`) + lostQuads, lostQuads ? 11000 : 7000);
   } catch (err) {
     if (ed.isOpen()) {
       if (err?.stopped || stopped) ed.ui.toast(`${name} was stopped. The model is as it was.`, 4000);

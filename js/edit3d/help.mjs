@@ -180,7 +180,7 @@ export const EDIT3D_HELP = {
           ["Remove loose bits", "Removes separate pieces smaller than 8 faces.", "The specks floating around a generated character."],
           ["Close cracks", "Joins open edges that almost touch (within the chosen share of the model's size), then closes the small gaps left.", "A model spliced from several views, at 0.25%."],
           ["Quads", "Lays a clean grid of quads over the whole model, following its crisp edges. 200K keeps small details, 50K is light.", "Before sending a model to Blender or a game engine."],
-          ["Reduce polygons", "Removes 25, 50 or 75% of the triangles while keeping the shape.", "A 1.5 million triangle model for a web viewer: -75%."],
+          ["Reduce polygons", "Removes 25, 50 or 75% of the faces while keeping the shape, and hands back TRIANGLES. That is what this kind of reducing is, in every program that has it, and it holds the original shape better than rebuilding the surface would. To make a QUAD model lighter and keep the quads, press Quads at a lower number (10K or 25K) instead.", "A 1.5 million triangle model for a web viewer: -75%."],
           ["Make solid", "Rebuilds the model as one closed solid for 3D printing. More detail keeps more of the shape and takes longer.", "Last step before printing, at 384."],
           ["Make both sides match", "Throws one side away along X, Y or Z and copies the other over it, so the two halves are exactly the same. This one rebuilds the model, unlike the Symmetry switch.", "A character whose left arm came out better: X, and keep the good side."],
         ],
