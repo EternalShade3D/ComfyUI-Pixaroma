@@ -66,7 +66,7 @@ export function createPick(ed) {
   /** The ring where the brush ALSO works while Symmetry is on, so it is seen before the press. */
   function drawMirrorRing(point, r, cls, wr) {
     const ring2 = view.ring2, a = symAxis();
-    if (a < 0) { ring2.style.display = "none"; return; }
+    if (a < 0 || !ed.prefs.mirrorRing) { ring2.style.display = "none"; return; }
     const q = reflect(point, a, ed.symC[a]);
     const rad = screenRadius(q, r);
     const v = q.clone().project(view.camera);

@@ -41,10 +41,11 @@ export const MODE_TABS = [
 
 export const b = (attrs, text, help, name) => `<button type="button" class="pxf-btn" ${attrs}${name ? ` data-name="${name}"` : ""} data-help="${help}">${text}</button>`;
 export const seg = (key, items, cls = "") => `<div class="pix-e3d-seg${cls}" data-seg="${key}">${items.map(([v, t, h]) => `<button type="button" data-v="${v}" data-help="${h}">${t}</button>`).join("")}</div>`;
-const sw = (key, text, help) => `<div class="pix-e3d-sw-row" data-switch="${key}" data-name="${text}" data-help="${help}"><span>${text}</span><span class="pix-e3d-sw"></span></div>`;
+export const sw = (key, text, help) => `<div class="pix-e3d-sw-row" data-switch="${key}" data-name="${text}" data-help="${help}"><span>${text}</span><span class="pix-e3d-sw"></span></div>`;
 
 /** The Symmetry row: the SAME setting wherever it appears, so the two copies can never disagree. */
-export const symRow = () => `<div class="pix-e3d-row pix-e3d-symrow" data-name="Symmetry" data-help="Off, or an axis: every tool then works on both sides of the model at once, so a fix on one side happens on the other. The middle is the middle of the model as it opened. Example: Symmetry X, then Panel on a dent picks the dent on the other side too."><span>Symmetry</span>${seg("sym", [["off", "Off", "The tools work only where you point."], ["x", "X", "Both sides left and right at once."], ["y", "Y", "Above and below at once."], ["z", "Z", "Front and back at once."]])}</div>`;
+export const symRow = () => `<div class="pix-e3d-row pix-e3d-symrow" data-name="Symmetry" data-help="Off, or an axis: every tool then works on both sides of the model at once, so a fix on one side happens on the other. The middle is the middle of the model as it opened. Example: Symmetry X, then Panel on a dent picks the dent on the other side too."><span>Symmetry</span>${seg("sym", [["off", "Off", "The tools work only where you point."], ["x", "X", "Both sides left and right at once."], ["y", "Y", "Above and below at once."], ["z", "Z", "Front and back at once."]])}</div>`
+  + sw("mirrorRing", "Show the other side", "While Symmetry is on, a blue dashed ring marks the second place the brush is working. Switch it off when it gets in the way; the brush still works on both sides either way.");
 
 export const modesHtml = () => `<div class="pix-e3d-modes">${MODE_TABS.map(([v, t, h]) => `<button type="button" data-mode-btn="${v}" data-name="${t}" data-help="${h}">${t}</button>`).join("")}</div>`;
 
@@ -88,7 +89,8 @@ export function rightHtml() {
 <div class="pix-e3d-brushname" data-el="brushName"></div>
 <div class="pix-e3d-slider" data-name="Strength" data-help="How hard the brush pulls. Each brush remembers its own: Smooth likes half, Flatten less. Several soft passes beat one hard one."><span>Strength</span><input type="range" min="5" max="100" step="5" data-brange="strength"><b data-out="strength"></b></div>
 ${symRow()}
-<div class="pix-e3d-row pix-e3d-symrow" data-name="Lock" data-help="What the selection you made in Polygons mode means here. Protect leaves it alone, so you can smooth right up against a crisp edge without losing it. Only inside works nowhere else. With nothing selected this does nothing."><span>Lock</span>${seg("lock", [["off", "Off", "The brush works wherever you drag it."], ["protect", "Protect", "The selected points are never moved: the lock that lets you work against a good edge."], ["only", "Only inside", "Only the selected points move, whatever else is under the brush."]])}</div>
+<div class="pix-e3d-row pix-e3d-symrow" data-name="Selection" data-help="What the area you picked in Polygons mode does to the brushes. Protected means the brush cannot move it; Only there means the brush moves nothing else."><span>Selection</span>${seg("lock", [["off", "Off", "The selection is ignored: the brush works wherever you drag it."], ["protect", "Protected", "The brush never moves the selected points. Select a crisp edge, then smooth right up against it without losing it."], ["only", "Only there", "The brush moves the selected points and nothing else, however big the brush is."]])}</div>
+<div class="pix-e3d-locknote" data-el="lockNote"></div>
 <div class="pix-e3d-hint">Brushes move the points that are already there; they never add new ones. On a coarse patch press Quads in Whole model first, so there is something to shape.</div>
 </div>
 <div class="pxf-panel" data-mode="polys"><div class="pxf-panel-title">Fix the selection</div>

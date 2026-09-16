@@ -31,7 +31,7 @@ const FILE_ID_RE = /^[a-z0-9]{12}$/;
 
 export const DEFAULT_PREFS = Object.freeze({
   look: "clay", symmetry: "off", through: false, brush: 0.03, xray: false, holes: false, mode: "model",
-  brushId: "smooth", strengths: {}, lock: "off",
+  brushId: "smooth", strengths: {}, lock: "off", mirrorRing: true,
 });
 export const DEFAULT_STATE = Object.freeze({
   edited: "", sourceKey: "", editCount: 0, edits: [], stamp: 0, fileId: "", prefs: DEFAULT_PREFS,
@@ -58,6 +58,7 @@ export function sanitizePrefs(raw) {
     mode: MODES.includes(s.mode) ? s.mode : D.mode,
     brushId: BRUSH_IDS.includes(s.brushId) ? s.brushId : D.brushId,
     lock: LOCKS.includes(s.lock) ? s.lock : D.lock,
+    mirrorRing: typeof s.mirrorRing === "boolean" ? s.mirrorRing : D.mirrorRing,
     strengths: sanitizeStrengths(s.strengths),
     through: typeof s.through === "boolean" ? s.through : D.through,
     brush: num(s.brush, 0.002, 0.3, D.brush),

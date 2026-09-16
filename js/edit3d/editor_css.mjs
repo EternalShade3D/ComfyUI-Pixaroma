@@ -24,7 +24,6 @@ ${E} .pix-e3d-axes{position:absolute;right:10px;bottom:10px;width:92px;height:92
 ${E} .pix-e3d-ring{position:absolute;display:none;border:1.5px solid ${A};border-radius:50%;pointer-events:none;z-index:4;box-shadow:0 0 0 1px rgba(0,0,0,.45),inset 0 0 0 1px rgba(0,0,0,.25);}
 ${E} .pix-e3d-ring.remove{border-color:#9fb3c8;border-style:dashed;}
 ${E} .pix-e3d-ring.move{border-color:#7ee07e;}
-${E} .pix-e3d-ring.mirror{opacity:.6;border-style:dashed;}
 ${E} .pxf-tool-info{font-size:10.5px;line-height:1.4;max-width:70%;}
 ${E} .pxf-tool-info.busy{color:${A};}
 ${E} .pxf-tool-info.help{font-family:"Segoe UI",system-ui,sans-serif;font-size:12px;color:#e4e4e4;border:1px solid rgba(246,103,68,.6);}
@@ -55,7 +54,7 @@ ${E} .pix-e3d-check-row b{flex:1 1 auto;}
 ${E} .pix-e3d-fix{flex:0 0 auto;background:transparent;border:1px solid #e0a33a;color:#e0a33a;font:10px "Segoe UI",system-ui,sans-serif;padding:1px 8px;border-radius:9px;cursor:pointer;transition:all .12s;}
 ${E} .pix-e3d-fix:hover{background:${A};border-color:${A};color:#fff;}
 ${E} .pix-e3d-check-row:hover{border-color:${A};}
-// Two classes on the one element, so these beat the .pix-e3d-row rules further down whatever the order.
+/* Two classes on the one element, so these beat the .pix-e3d-row rules further down whatever the order. */
 ${E} .pix-e3d-row.pix-e3d-symrow{margin-bottom:8px;}
 ${E} .pix-e3d-row.pix-e3d-symrow > span:first-child{width:62px;}
 ${E} .pix-e3d-tools{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
@@ -71,7 +70,12 @@ ${E} .pix-e3d-g4{grid-template-columns:repeat(4,1fr);}
 ${E} .pix-e3d-g2 .pxf-btn,${E} .pix-e3d-g3 .pxf-btn,${E} .pix-e3d-g4 .pxf-btn{padding:4px 0;font-size:11px;}
 ${E} .pix-e3d-count{font-size:11px;color:#bbb;margin-bottom:3px;}
 ${E} .pix-e3d-brushname{font-size:12px;color:${A};margin-bottom:8px;}
+${E} .pix-e3d-locknote{font-size:10.5px;color:#8d9296;line-height:1.45;margin:-2px 0 8px;}
 ${E} .pix-e3d-ring.sculpt{border-color:#7ee07e;}
+/* The mirrored ring is deliberately a different COLOUR, not a fainter copy of the real one: it was reported as hard
+   to tell apart. Declared LAST so it wins over every other ring look, and written with a CSS comment because a
+   double slash inside this literal is not a comment at all, it is a selector that eats the rule after it. */
+${E} .pix-e3d-ring.mirror{border-color:#6aa0ff;border-style:dashed;border-width:2px;opacity:.95;}
 ${E} .pix-e3d-hint{font-size:11px;color:#8d9296;line-height:1.45;margin-top:7px;}
 ${E} .pix-e3d-seg{display:flex;background:rgba(0,0,0,.25);border:1px solid #3a3d40;border-radius:5px;padding:2px;gap:2px;}
 ${E} .pix-e3d-seg button{flex:1;background:transparent;border:1px solid transparent;color:#aaa;font:11px "Segoe UI",system-ui,sans-serif;padding:4px 6px;border-radius:4px;cursor:pointer;transition:all .12s;white-space:nowrap;}

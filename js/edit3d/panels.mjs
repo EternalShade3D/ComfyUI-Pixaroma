@@ -47,6 +47,7 @@ export function buildPanels(ed) {
     selCount: q(L.leftSidebar, '[data-el="selCount"]'), check: q(L.leftSidebar, '[data-el="check"]'),
     holeBadge: q(scroll, '[data-el="holeBadge"]'), looseBadge: q(scroll, '[data-el="looseBadge"]'),
     history: q(scroll, '[data-el="history"]'), name: q(scroll, '[data-el="name"]'), brushName: q(scroll, '[data-el="brushName"]'),
+    lockNote: q(scroll, '[data-el="lockNote"]'),
     toast: toastEl, legend, job, jobMsg: job.querySelector(".msg"), jobStop: job.querySelector("button"), scroll,
   };
   els.name.value = ed.opts.name;
@@ -70,7 +71,7 @@ export function buildPanels(ed) {
   const SEGS = {
     look: [() => ed.prefs.look, (v) => ed.setLook(v)],
     sym: [() => ed.prefs.symmetry, (v) => ed.setSymmetry(v)],
-    lock: [() => ed.prefs.lock, (v) => { ed.prefs.lock = v; }],
+    lock: [() => ed.prefs.lock, (v) => { ed.prefs.lock = v; ui.refreshInfo(); }],
     view: [() => (ed.showingBefore ? "before" : "after"), (v) => ed.setBeforeAfter(v)],
     cracks: [() => String(ed.opts.cracks), (v) => { ed.opts.cracks = Number(v); }],
     holeSize: [() => String(ed.opts.holeSize), (v) => { ed.opts.holeSize = Number(v); }],
@@ -98,6 +99,7 @@ export function buildPanels(ed) {
     holes: [() => ed.prefs.holes, () => ed.setHoles(!ed.prefs.holes)],
     xray: [() => ed.prefs.xray, () => ed.setXray(!ed.prefs.xray)],
     center: [() => ed.opts.center, () => { ed.opts.center = !ed.opts.center; }],
+    mirrorRing: [() => ed.prefs.mirrorRing, () => { ed.prefs.mirrorRing = !ed.prefs.mirrorRing; ed.hideRings(); }],
   };
   const syncSwitches = () => {
     for (const r of all("[data-switch]")) r.querySelector(".pix-e3d-sw").classList.toggle("on", !!SWITCHES[r.dataset.switch]?.[0]());
@@ -163,6 +165,13 @@ export function buildPanels(ed) {
       if (m) {
         const n = m.selectedCount();
         els.selCount.textContent = n ? `${fmtInt(n)} points selected` : "Nothing selected";
+        // What the Selection setting will actually DO right now, in numbers. The three words on their own were not
+        // enough: they were reported as not understood, and a control nobody can read is a broken control.
+        els.lockNote.textContent = !n
+          ? "Nothing is selected, so this does nothing yet. Pick an area in Polygons mode first."
+          : ed.prefs.lock === "protect" ? `The ${fmtInt(n)} selected points will not move.`
+            : ed.prefs.lock === "only" ? `Only those ${fmtInt(n)} points can move.`
+              : `${fmtInt(n)} points are selected, and the brushes are ignoring them.`;
         const r = ed.prefs.mode === "model" ? rims(m) : null;
         els.holeBadge.textContent = !r || r.n < 0 ? "" : r.n ? `${fmtInt(r.n)} hole${r.n === 1 ? "" : "s"}` : m.stats.open ? "no rim to walk" : "none";
         els.looseBadge.textContent = `${fmtInt(m.stats.tiny)} tiny`;

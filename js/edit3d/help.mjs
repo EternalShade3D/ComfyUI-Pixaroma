@@ -70,8 +70,8 @@ export const EDIT3D_HELP = {
       bullets: [
         "Strength is remembered for each brush on its own, because they want different amounts: Smooth likes half, Flatten less. Several soft passes beat one hard one.",
         "Brush size is the same control as in Polygons mode, in millimetres on a 100 mm print, and the [ and ] keys change it.",
-        "Symmetry works here too: with an axis on, the brush works on both sides at once and a second dashed ring shows you where.",
-        "Lock uses the selection you made in Polygons mode. Protect means the selected points are never moved, so you can smooth right up against a crisp edge without losing it; Only inside means nothing else moves. With nothing selected it does nothing.",
+        "Symmetry works here too: with an axis on, the brush works on both sides at once, and a BLUE dashed ring marks the second place it is working. Show the other side switches that ring off when it gets in the way; the brush still works on both sides either way.",
+        "Selection is what the area you picked in Polygons mode does to the brushes. Protected means the brush can never move those points, so you can smooth right up against a crisp edge without losing it. Only there means the brush moves them and nothing else. The line under it says what will happen with the selection you have, in numbers.",
         "Facing me and Through work as they do for the selection tools: Through reaches the far side of a thin part as well.",
         "Brushes move the points that are already there and never add new ones. On a coarse patch there is nothing to shape, so press Quads in Whole model first, or Subdivide the area in Polygons mode.",
       ],
@@ -95,7 +95,7 @@ export const EDIT3D_HELP = {
     {
       heading: "Symmetry, selection and the options bar",
       bullets: [
-        "Symmetry (in the Selection panel) is off, X, Y or Z. With an axis on, every tool works on both sides of the model at once: Select, Deselect, Lasso, Panel, Piece and Move. Example: Symmetry X, then click a dent with Panel and the dent on the other side is picked too, so one Flatten fixes both. A second dashed ring shows where the brush is also working.",
+        "Symmetry (in the Selection panel) is off, X, Y or Z. With an axis on, every tool works on both sides of the model at once: Select, Deselect, Lasso, Panel, Piece and Move. Example: Symmetry X, then click a dent with Panel and the dent on the other side is picked too, so one Flatten fixes both. A BLUE dashed ring marks where the brush is also working, and Show the other side turns that ring off if it gets in the way.",
         "The middle it mirrors around is the middle of the model as it opened, and it stays there even after you delete half of it.",
         "Symmetry is not the same as Make both sides match. Symmetry only makes the tools work twice; Make both sides match rebuilds the model out of one half.",
         "All, None and Invert work on what is shown. Grow and Shrink add or take away one row of points at the edge.",
