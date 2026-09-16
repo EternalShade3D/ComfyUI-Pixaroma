@@ -224,29 +224,59 @@ export function boundaryLoops(wid, nw, counts, indices, alive, maxLen, accept = 
 export function collapseShortEdges(pos, P, counts, indices, alive, hidden, cornerUv, allow, maxLen, maxCollapses = 400) {
   const st = faceStarts(counts), F = counts.length;
   const none = { collapsed: 0, killed: 0, counts, indices, alive, hidden, cornerUv };
-  // Unique edges, plus which points sit on a rim (an edge in only one live polygon).
-  const keys = sortedEdgeKeys(null, P, counts, indices, alive);
-  if (!keys.length) return none;
-  const onRim = new Uint8Array(P), ea = [], eb = [];
-  for (let i = 0; i < keys.length;) {
-    let j = i + 1;
-    while (j < keys.length && keys[j] === keys[i]) j++;
-    const a = Math.floor(keys[i] / P), b = keys[i] % P;
-    if (j - i === 1) { onRim[a] = 1; onRim[b] = 1; }
-    ea.push(a); eb.push(b);
-    i = j;
+  // ONLY the polygons near the brush: the ones holding an allowed point, plus one ring out. Every edge touching an
+  // allowed point then has BOTH its polygons here, so its multiplicity, and with it the rim test, is still exact.
+  // Sorting every edge in the model to merge a few hundred inside the footprint was 495 ms of a 596 ms stamp.
+  const near = new Uint8Array(F), ringPt = new Uint8Array(P);
+  let anyCore = false;
+  for (let f = 0; f < F; f++) {
+    if (!alive[f]) continue;
+    const s = st[f], n = counts[f];
+    let hit = false;
+    for (let k = 0; k < n; k++) if (allow[indices[s + k]]) { hit = true; break; }
+    if (!hit) continue;
+    near[f] = 1;
+    anyCore = true;
+    for (let k = 0; k < n; k++) ringPt[indices[s + k]] = 1;
   }
-  // point -> neighbours (over real polygon edges) and point -> polygons, both needed for rules 2 and 3
+  if (!anyCore) return none;
+  for (let f = 0; f < F; f++) {
+    if (near[f] || !alive[f]) continue;
+    const s = st[f], n = counts[f];
+    for (let k = 0; k < n; k++) if (ringPt[indices[s + k]]) { near[f] = 1; break; }
+  }
+  // Unique edges of that neighbourhood, with how many polygons hold each: one means a rim.
+  const mult = new Map();
+  for (let f = 0; f < F; f++) {
+    if (!near[f]) continue;
+    const s = st[f], n = counts[f];
+    for (let k = 0; k < n; k++) {
+      const a = indices[s + k], b = indices[s + ((k + 1) % n)];
+      if (a === b) continue;
+      const key = a < b ? a * P + b : b * P + a;
+      mult.set(key, (mult.get(key) || 0) + 1);
+    }
+  }
+  if (!mult.size) return none;
+  const onRim = new Uint8Array(P), ea = [], eb = [];
+  for (const [key, m] of mult) {
+    const a = Math.floor(key / P), b = key % P;
+    if (m === 1) { onRim[a] = 1; onRim[b] = 1; }
+    ea.push(a);
+    eb.push(b);
+  }
+  // point -> neighbours (over real polygon edges) and point -> polygons, both needed for rules 2 and 3, and both
+  // exact for every allowed point because the neighbourhood carries their whole ring.
   const nOff = new Int32Array(P + 1), pOff = new Int32Array(P + 1);
   for (let e = 0; e < ea.length; e++) { nOff[ea[e] + 1]++; nOff[eb[e] + 1]++; }
-  for (let f = 0; f < F; f++) if (alive[f]) for (let k = 0; k < counts[f]; k++) pOff[indices[st[f] + k] + 1]++;
+  for (let f = 0; f < F; f++) if (near[f]) for (let k = 0; k < counts[f]; k++) pOff[indices[st[f] + k] + 1]++;
   for (let p = 0; p < P; p++) { nOff[p + 1] += nOff[p]; pOff[p + 1] += pOff[p]; }
   const nbr = new Int32Array(nOff[P]), pf = new Int32Array(pOff[P]);
   {
     const at = nOff.slice(0, P);
     for (let e = 0; e < ea.length; e++) { nbr[at[ea[e]]++] = eb[e]; nbr[at[eb[e]]++] = ea[e]; }
     const ap = pOff.slice(0, P);
-    for (let f = 0; f < F; f++) if (alive[f]) for (let k = 0; k < counts[f]; k++) pf[ap[indices[st[f] + k]]++] = f;
+    for (let f = 0; f < F; f++) if (near[f]) for (let k = 0; k < counts[f]; k++) pf[ap[indices[st[f] + k]]++] = f;
   }
   const shared = (a, b) => {
     let n = 0;
