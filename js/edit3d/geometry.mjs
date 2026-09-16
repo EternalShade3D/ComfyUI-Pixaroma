@@ -377,10 +377,38 @@ export function sharpenEdge(pos, ptN, raw, panelA, facesA, panelB, facesB, adj, 
   const mA = panelA.slice(), mB = panelB.slice();
   for (let p = 0; p < P; p++) if (strip[p]) { mA[p] = 1; mB[p] = 1; }
   const wA = weightsInside(P, mA, adj.nbOff, adj.nb), wB = weightsInside(P, mB, adj.nbOff, adj.nb);
+  /**
+   * A panel point is flattened onto its plane ONLY if it is already somewhere near it. `moveOnto` has no bound of
+   * its own, and `floodPanel` has no spatial guard: it tests every face against the SEED normal and walks point
+   * adjacency as far as it can reach, so on a model with broken edges a panel can take in a DISTANT surface of the
+   * same facing. Those points were then slammed onto the near plane and the triangles between them stretched into a
+   * flat sheet right across the model (reported 2026-09-16 with pictures, from two SMALL panels on a button).
+   * The bound is the panel's OWN spread rather than a fixed number, so a genuinely curved panel still flattens
+   * fully: four times the median distance, floored at lineReach so a dead flat panel cannot reject itself.
+   * A normal filter (what flattenSelection gets from dominantPanel) can NOT catch this, because the flood chose
+   * those far points BY normal in the first place. The bound has to be spatial.
+   */
+  const boundFor = (plane, mark) => {
+    const ds = [];
+    for (let p = 0; p < P; p++) if (mark[p]) ds.push(Math.abs(distTo(pos, p, plane)));
+    if (!ds.length) return opts.lineReach;
+    ds.sort((x, y) => x - y);
+    return Math.max(4 * ds[ds.length >> 1], opts.lineReach);
+  };
+  const capA = boundFor(A, panelA), capB = boundFor(B, panelB);
+  let leftAlone = 0;
   for (let p = 0; p < P; p++) {
-    if (panelA[p]) { moveOnto(pos, p, A, wA[p]); flattened++; } else if (panelB[p]) { moveOnto(pos, p, B, wB[p]); flattened++; }
+    if (panelA[p]) {
+      if (Math.abs(distTo(pos, p, A)) > capA) { leftAlone++; continue; }
+      moveOnto(pos, p, A, wA[p]);
+      flattened++;
+    } else if (panelB[p]) {
+      if (Math.abs(distTo(pos, p, B)) > capB) { leftAlone++; continue; }
+      moveOnto(pos, p, B, wB[p]);
+      flattened++;
+    }
   }
-  return { squeezed, flattened };
+  return { squeezed, flattened, leftAlone };
 }
 
 /** The triangles of a flat panel around triangle f0: a flood over visible triangles whose normal is within `flatDeg` of f0's. */

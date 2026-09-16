@@ -184,7 +184,10 @@ export class Ops {
       if (r.error) { this.toast("Those two panels face the same way, so there is no edge between them to sharpen."); return false; }
       m.panelA = m.panelB = m.panelAFaces = m.panelBFaces = null;
       if (!r.squeezed) this.toast("No rounded edge was found between those two panels, so they were only flattened. Pick two panels that meet.");
-      return `Sharpen edge (${fmtInt(r.squeezed)} edge points, ${fmtInt(r.flattened)} panel points)`;
+      // Saying what was left alone, rather than leaving the user to notice: a panel that reaches across the model
+      // used to drag those far points onto its plane and throw a sheet out through everything.
+      else if (r.leftAlone) this.toast(`${fmtInt(r.leftAlone)} point${r.leftAlone === 1 ? " was" : "s were"} left alone: the panel reaches part of the model too far from its own flat plane to belong to it.`, 6000);
+      return `Sharpen edge (${fmtInt(r.squeezed)} edge points, ${fmtInt(r.flattened)} panel points${r.leftAlone ? `, ${fmtInt(r.leftAlone)} left alone` : ""})`;
     }, "Sharpening the edge...");
   }
 
