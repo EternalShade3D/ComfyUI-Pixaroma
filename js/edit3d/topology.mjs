@@ -278,13 +278,41 @@ export function collapseShortEdges(pos, P, counts, indices, alive, hidden, corne
     const ap = pOff.slice(0, P);
     for (let f = 0; f < F; f++) if (near[f]) for (let k = 0; k < counts[f]; k++) pf[ap[indices[st[f] + k]]++] = f;
   }
-  const shared = (a, b) => {
-    let n = 0;
+  /** Does face f hold both a and b? */
+  const holdsEdge = (f, a, b) => {
+    let hasA = false, hasB = false;
+    for (let k = 0; k < counts[f]; k++) {
+      const v = indices[st[f] + k];
+      if (v === a) hasA = true; else if (v === b) hasB = true;
+    }
+    return hasA && hasB;
+  };
+  /**
+   * The LINK CONDITION, stated for POLYGONS rather than for triangles. Every neighbour the two ends SHARE must be a
+   * corner of a face that already holds the edge (a, b). A shared neighbour outside those faces is the danger: the
+   * collapse merges edge (a, v) with edge (b, v), two distinct edges become one, their faces add up, and the result
+   * is an edge in three or more faces that nothing downstream can mend.
+   *
+   * It used to read `shared(a, b) === 2`, which is the TRIANGLE form of exactly this: a triangle's two faces
+   * contribute their opposite corners, so the count is always 2. A QUAD's two faces contribute NO common neighbour,
+   * so that test refused every collapse on a quad model and Simplify silently did nothing there - measured, 0 of 64
+   * quads against 60 on the same grid triangulated. This pack keeps quads through every edit, so that was half the
+   * models it would ever be pointed at.
+   */
+  const linkOk = (a, b) => {
+    let faces = 0;
+    for (let i = pOff[a]; i < pOff[a + 1]; i++) if (holdsEdge(pf[i], a, b)) faces++;
+    if (faces !== 2) return false; // not a plain interior edge (a rim, or already non-manifold): leave it alone
     for (let i = nOff[a]; i < nOff[a + 1]; i++) {
       const q = nbr[i];
-      for (let j = nOff[b]; j < nOff[b + 1]; j++) if (nbr[j] === q) { n++; break; }
+      let isShared = false;
+      for (let j = nOff[b]; j < nOff[b + 1]; j++) if (nbr[j] === q) { isShared = true; break; }
+      if (!isShared) continue;
+      let onEdgeFace = false;
+      for (let i2 = pOff[q]; i2 < pOff[q + 1] && !onEdgeFace; i2++) if (holdsEdge(pf[i2], a, b)) onEdgeFace = true;
+      if (!onEdgeFace) return false;
     }
-    return n;
+    return true;
   };
   // A polygon's normal from its first three corners, with one point moved and another merged away.
   const normalOf = (f, moveP, to, mergeQ) => {
@@ -308,7 +336,7 @@ export function collapseShortEdges(pos, P, counts, indices, alive, hidden, corne
     if (!allow[a] || !allow[b] || onRim[a] || onRim[b] || used[a] || used[b]) continue;
     const dx = pos[3 * b] - pos[3 * a], dy = pos[3 * b + 1] - pos[3 * a + 1], dz = pos[3 * b + 2] - pos[3 * a + 2];
     if (Math.hypot(dx, dy, dz) > maxLen) continue;
-    if (shared(a, b) !== 2) continue;
+    if (!linkOk(a, b)) continue;
     mid[0] = pos[3 * a] + dx / 2; mid[1] = pos[3 * a + 1] + dy / 2; mid[2] = pos[3 * a + 2] + dz / 2;
     let flips = false;
     for (const p of [a, b]) {
