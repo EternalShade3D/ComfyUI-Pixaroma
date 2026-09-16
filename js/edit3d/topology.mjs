@@ -205,6 +205,131 @@ export function boundaryLoops(wid, nw, counts, indices, alive, maxLen, accept = 
 }
 
 /**
+ * Collapse the short edges whose BOTH ends are allowed: the Simplify brush. Each surviving edge merges its two
+ * points into their middle, so a dense patch loses points and the polygons around it close up.
+ *
+ * Topology is unforgiving, so four rules, each of which prevents a mesh nothing downstream could mend:
+ *  1. Neither end may sit on a hole's RIM. Collapsing a rim point drags the hole's outline about.
+ *  2. The LINK CONDITION: the two ends must share exactly two neighbours. Fewer or more and the collapse folds the
+ *     surface onto itself and leaves an edge shared by three or more faces.
+ *  3. No polygon around the edge may FLIP (its normal turning more than a right angle), which is what makes the
+ *     shredded spikes people see after a careless decimation.
+ *  4. A point may take part ONCE per pass, so nothing cascades inside a single call.
+ * Everything is decided against the ORIGINAL positions and applied afterwards, the same rule the brushes follow.
+ *
+ * Returns the new arrays rather than editing in place, because a polygon that loses a corner changes the flat
+ * layout of counts and indices. Dead polygons are dropped while it is rebuilding anyway.
+ * -> { collapsed, killed, counts, indices, alive, hidden, cornerUv }
+ */
+export function collapseShortEdges(pos, P, counts, indices, alive, hidden, cornerUv, allow, maxLen, maxCollapses = 400) {
+  const st = faceStarts(counts), F = counts.length;
+  const none = { collapsed: 0, killed: 0, counts, indices, alive, hidden, cornerUv };
+  // Unique edges, plus which points sit on a rim (an edge in only one live polygon).
+  const keys = sortedEdgeKeys(null, P, counts, indices, alive);
+  if (!keys.length) return none;
+  const onRim = new Uint8Array(P), ea = [], eb = [];
+  for (let i = 0; i < keys.length;) {
+    let j = i + 1;
+    while (j < keys.length && keys[j] === keys[i]) j++;
+    const a = Math.floor(keys[i] / P), b = keys[i] % P;
+    if (j - i === 1) { onRim[a] = 1; onRim[b] = 1; }
+    ea.push(a); eb.push(b);
+    i = j;
+  }
+  // point -> neighbours (over real polygon edges) and point -> polygons, both needed for rules 2 and 3
+  const nOff = new Int32Array(P + 1), pOff = new Int32Array(P + 1);
+  for (let e = 0; e < ea.length; e++) { nOff[ea[e] + 1]++; nOff[eb[e] + 1]++; }
+  for (let f = 0; f < F; f++) if (alive[f]) for (let k = 0; k < counts[f]; k++) pOff[indices[st[f] + k] + 1]++;
+  for (let p = 0; p < P; p++) { nOff[p + 1] += nOff[p]; pOff[p + 1] += pOff[p]; }
+  const nbr = new Int32Array(nOff[P]), pf = new Int32Array(pOff[P]);
+  {
+    const at = nOff.slice(0, P);
+    for (let e = 0; e < ea.length; e++) { nbr[at[ea[e]]++] = eb[e]; nbr[at[eb[e]]++] = ea[e]; }
+    const ap = pOff.slice(0, P);
+    for (let f = 0; f < F; f++) if (alive[f]) for (let k = 0; k < counts[f]; k++) pf[ap[indices[st[f] + k]]++] = f;
+  }
+  const shared = (a, b) => {
+    let n = 0;
+    for (let i = nOff[a]; i < nOff[a + 1]; i++) {
+      const q = nbr[i];
+      for (let j = nOff[b]; j < nOff[b + 1]; j++) if (nbr[j] === q) { n++; break; }
+    }
+    return n;
+  };
+  // A polygon's normal from its first three corners, with one point moved and another merged away.
+  const normalOf = (f, moveP, to, mergeQ) => {
+    const s = st[f], n = counts[f];
+    const at = (k) => {
+      let v = indices[s + k];
+      if (v === mergeQ) v = moveP;
+      return v === moveP ? to : [pos[3 * v], pos[3 * v + 1], pos[3 * v + 2]];
+    };
+    const A = at(0), B = at(1 % n), C = at(2 % n);
+    const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2];
+    const vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
+    return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+  };
+  const used = new Uint8Array(P), remap = new Int32Array(P);
+  for (let p = 0; p < P; p++) remap[p] = p;
+  const mid = [0, 0, 0];
+  let collapsed = 0;
+  for (let e = 0; e < ea.length && collapsed < maxCollapses; e++) {
+    const a = ea[e], b = eb[e];
+    if (!allow[a] || !allow[b] || onRim[a] || onRim[b] || used[a] || used[b]) continue;
+    const dx = pos[3 * b] - pos[3 * a], dy = pos[3 * b + 1] - pos[3 * a + 1], dz = pos[3 * b + 2] - pos[3 * a + 2];
+    if (Math.hypot(dx, dy, dz) > maxLen) continue;
+    if (shared(a, b) !== 2) continue;
+    mid[0] = pos[3 * a] + dx / 2; mid[1] = pos[3 * a + 1] + dy / 2; mid[2] = pos[3 * a + 2] + dz / 2;
+    let flips = false;
+    for (const p of [a, b]) {
+      for (let i = pOff[p]; i < pOff[p + 1] && !flips; i++) {
+        const f = pf[i];
+        let holdsBoth = false;
+        for (let k = 0; k < counts[f]; k++) { const v = indices[st[f] + k]; if (v === (p === a ? b : a)) { holdsBoth = true; break; } }
+        if (holdsBoth) continue; // the polygons ON the edge are the ones meant to vanish
+        const before = normalOf(f, -1, null, -1), after = normalOf(f, a === p ? a : b, mid, p === a ? b : a);
+        const lb = Math.hypot(before[0], before[1], before[2]), la = Math.hypot(after[0], after[1], after[2]);
+        if (lb < 1e-20 || la < 1e-20) continue;
+        if ((before[0] * after[0] + before[1] * after[1] + before[2] * after[2]) / (lb * la) < 0) flips = true;
+      }
+    }
+    if (flips) continue;
+    pos[3 * a] = mid[0]; pos[3 * a + 1] = mid[1]; pos[3 * a + 2] = mid[2];
+    remap[b] = a;
+    used[a] = 1;
+    used[b] = 1;
+    collapsed++;
+  }
+  if (!collapsed) return none;
+  // Rebuild the polygons: remap, drop repeated corners, drop anything left with under three, drop the dead.
+  const outCounts = [], outIdx = [], outAlive = [], outHidden = [], outUv = cornerUv ? [] : null;
+  let killed = 0;
+  for (let f = 0; f < F; f++) {
+    if (!alive[f]) continue;
+    const s = st[f], n = counts[f], corners = [], uvs = [];
+    for (let k = 0; k < n; k++) {
+      const v = remap[indices[s + k]];
+      if (corners.length && corners[corners.length - 1] === v) continue;
+      corners.push(v);
+      if (outUv) uvs.push(cornerUv[2 * (s + k)], cornerUv[2 * (s + k) + 1]);
+    }
+    while (corners.length > 1 && corners[0] === corners[corners.length - 1]) { corners.pop(); if (outUv) { uvs.pop(); uvs.pop(); } }
+    if (corners.length < 3) { killed++; continue; }
+    outCounts.push(corners.length);
+    for (const c of corners) outIdx.push(c);
+    if (outUv) for (const u of uvs) outUv.push(u);
+    outAlive.push(1);
+    outHidden.push(hidden[f]);
+  }
+  return {
+    collapsed, killed,
+    counts: Int32Array.from(outCounts), indices: Uint32Array.from(outIdx),
+    alive: Uint8Array.from(outAlive), hidden: Uint8Array.from(outHidden),
+    cornerUv: outUv ? Float32Array.from(outUv) : null,
+  };
+}
+
+/**
  * Close loops: up to `maxLenOneFace` corners one polygon, else a fan around the loop's middle (a new point).
  * `firstOf[wid]` maps a welded id back to one point index (null when the loops already hold point indices).
  * -> { counts, indices, newPoints: number[] (xyz), faces }

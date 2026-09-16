@@ -363,6 +363,11 @@ export const BRUSHES = [
     help: "Click on a point that sticks out of an otherwise smooth surface and it drops back level with its neighbours. It only touches points that stand off on their own, so a real panel edge beside it is left alone, and it needs a click rather than a drag. Example: the single pulled vertex that makes a little tent in a flat area.",
   },
   {
+    // Topology, not points: sculpt.mjs sees `topo` and calls the model instead of a maths function.
+    id: "simplify", label: "Simplify", apply: () => 0, strength: 0.6, topo: "simplify", counts: "changed",
+    help: "Merges the shortest edges under the brush, so a patch that came out far denser than the rest loses points and matches its surroundings. It never touches a hole's rim, never folds the surface, and refuses any merge that would flip a face. Strength sets how long an edge may be and still be merged. Example: the crowded triangles left where a dent used to be.",
+  },
+  {
     id: "even", label: "Even out", apply: brushEven, strength: 0.6,
     help: "Slides the points sideways until they are evenly spaced, leaving the shape where it is. Every other brush behaves better afterwards. Example: a patch of stretched, bunched triangles.",
   },

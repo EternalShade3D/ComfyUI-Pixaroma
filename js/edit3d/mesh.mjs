@@ -2,7 +2,7 @@
 // keeps its quads through every edit and into the saved OBJ); triangles are derived from them for drawing, picking and
 // the maths. Per-polygon alive and hidden flags, a per-point selection, and the GPU buffers (drawn unindexed, so each
 // corner can have its own normal and colour). Every tool edits `pos`, the same numbers the screen shows.
-import { weldIds, faceStarts, census } from "./topology.mjs";
+import { weldIds, faceStarts, census, collapseShortEdges } from "./topology.mjs";
 import { buildAdjacency, faceNormals, pointNormals, creasedCornerNormals, COS_CREASE } from "./geometry.mjs";
 
 const SEL = [0.965, 0.404, 0.267];
@@ -539,6 +539,23 @@ export class MeshModel {
     this.sel = new Uint8Array(this.P);
     this._derive();
     this.refreshGeometry();
+  }
+
+  /** Simplify: merge the short edges among `points` (the brush's footprint). Rebuilds everything, because the
+   *  polygons themselves change. -> { collapsed, killed } */
+  simplifyUnder(points, maxLen, maxCollapses) {
+    const allow = new Uint8Array(this.P);
+    for (const p of points) allow[p] = 1;
+    const r = collapseShortEdges(this.pos, this.P, this.counts, this.indices, this.alive, this.hidden, this.cornerUv, allow, maxLen, maxCollapses);
+    if (!r.collapsed) return r;
+    this.counts = r.counts;
+    this.indices = r.indices;
+    this.alive = r.alive;
+    this.hidden = r.hidden;
+    this.cornerUv = r.cornerUv;
+    this.F = this.counts.length;
+    this.rebuild();
+    return r;
   }
 
   /** After counts or indices were changed in place (Close cracks): the triangles, the adjacency and the buffers again. */

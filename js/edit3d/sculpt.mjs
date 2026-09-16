@@ -71,8 +71,30 @@ export function installSculpt(ed) {
     return touched;
   }
 
+  /** A topology brush changes the polygons themselves, so it needs the whole-model rebuild and an "all" snapshot. */
+  function paintTopology(point, brush) {
+    const m = ed.model, r = ed.brushRadius(), lock = stroke ? stroke.lock : "off";
+    const pts = [];
+    for (const { c, cam } of P.centres(point)) {
+      m.pointsNear(c.x, c.y, c.z, r, (p) => {
+        if (!m.ptVis[p] || !P.facing(m, p, cam)) return;
+        if (lock === "protect" && m.sel[p]) return;
+        if (lock === "only" && !m.sel[p]) return;
+        pts.push(p);
+      });
+    }
+    if (!pts.length) return false;
+    const res = m.simplifyUnder(pts, r * 0.35 * ed.brushStrength(), 400);
+    if (!res.collapsed) return false;
+    stroke.changed += res.collapsed;
+    stroke.moved = true;
+    ed.afterGeometry();
+    return true;
+  }
+
   function paint(point, invert) {
     const brush = brushById(ed.prefs.brushId);
+    if (brush.topo) return paintTopology(point, brush);
     if (brush.paints) {
       const painted = paintSelection(point, invert);
       if (!painted.length) return false;
@@ -166,7 +188,8 @@ export function installSculpt(ed) {
     const lock = m.selectedCount() ? ed.prefs.lock : "off";
     const brush = brushById(ed.prefs.brushId);
     const paints = !!brush.paints;
-    stroke = { snap: paints ? null : m.snapshot("pos"), touched: new Set(), changed: 0, moved: false, last: hit.point.clone(), lock, grab: null };
+    // A topology brush needs the FULL snapshot: an undo has to put the polygons back, not just the positions.
+    stroke = { snap: paints ? null : m.snapshot(brush.topo ? "all" : "pos"), touched: new Set(), changed: 0, moved: false, last: hit.point.clone(), lock, grab: null, topo: !!brush.topo };
     if (brush.grabs) {
       stroke.grab = buildGrab(hit, lock);
       if (!stroke.grab) { stroke = null; return; }
@@ -219,7 +242,8 @@ export function installSculpt(ed) {
     if (!s) return;
     if (!s.moved || !s.snap) return; // the Protect brush paints the picked area: nothing to undo
     const brush = brushById(ed.prefs.brushId);
-    ed.ops.commit(s.snap, strokeLabel(brush, s), true);
+    // posOnly only for the brushes that just move points: merging edges DOES change the holes and pieces counts.
+    ed.ops.commit(s.snap, strokeLabel(brush, s), !s.topo);
   }
 
   function onUp() { if (stroke) finish(); }
