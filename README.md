@@ -128,6 +128,9 @@ Point it at any folder on your computer and batch-process its images through you
 ### 🗿 Load 3D Pixaroma
 Load a 3D model and get the model **and** a picture of it from one node, so the same model can feed a 3D workflow and an image workflow. Opens **GLB, GLTF, OBJ, FBX, STL and PLY** from ComfyUI's `input/3d` and `output/3d` folders (a model a 3D workflow just saved is already in the list), with a big **Upload** button and drag-and-drop. The model shows live on the node: drag to turn it, scroll to zoom, or jump to **Front**, **Back**, **Left**, **Right**, **Top** or **3/4**. Pick a look - **Color** (its own textures), **Clay** (just the shape in grey), **Normal** or **Depth** (ready for ControlNet) or **Wire** - and type the **Width** and **Height**, or wire them in from Sizes Pixaroma so the picture follows your size pick; the bright frame shows exactly the picture that comes out. Outputs `model_3d`, `image`, a matching `mask`, and the picture's `width` and `height` for your empty latent. The gear holds the background, light, camera, which way is up, and a quarter turn for a model that faces the wrong way. Works in both the classic and the new node interface.
 
+### 📤 Save 3D Pixaroma
+See a 3D model on the node, check which way it faces, and save it. Wire in a mesh from a 3D generator or a `model_3d` from Load 3D Pixaroma. The square view turns with a drag and jumps to **Front**, **Back**, **Left**, **Right**, **Top** or **3/4**, while a floor grid, an orange **FRONT** arrow and an X Y Z marker show how the model stands. Pick a look - **Color**, **Clay**, **Wire** (the real edges, so quads show as quads), **Panels** or **Normal**. **Turn X / Y / Z**, **Center** and **On ground** fix the file itself, and a check line tells you when the model floats, sinks or sits off center. **Preview** writes a temporary file, **Save** writes one on every run, and **Save now** keeps the last preview without running again. **Format**: OBJ keeps quads and colours, GLB keeps colours and textures, STL is for 3D printers. The gear holds the save folder (any folder you pick), the light, the background and the viewer switches. Outputs `model_3d`. Works in both the classic and the new node interface.
+
 ### ↔️ Image Resize Pixaroma
 Resize any image (and its mask) anywhere in your workflow with one compact node. Pick a mode - **Off**, **Max megapixels**, **Longest side**, **Scale by ×**, **Fit inside**, **Crop to fill**, **Match aspect ratio**, or **Pad** (add a colored border for outpainting / inpainting, where the new area becomes the editable mask region). **Crop to fill** has a 9-point **anchor** (keep the top, a corner, the center…) and a **Fill / Crop** toggle (scale-and-crop, or cut a piece at original pixels). A live **Input → Output** card with tiny aspect-ratio rectangles shows exactly what you'll get, and turns orange only when the size actually changes. Wire a **width / height** in (e.g. from Resolution Pixaroma): connect just one to scale while keeping the aspect ratio, or both for an exact size, and the controls adapt automatically. **Snap to /8/16/32/64**, a **Resample picker** (Auto / Nearest / Bilinear / Bicubic / Lanczos), and an **Allow upscaling** toggle apply on top; number fields take math like `1024+64`. Outputs `IMAGE`, `MASK`, `WIDTH`, `HEIGHT`.
 
@@ -388,6 +391,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **September 16, 2026 · v1.4.151**
+- **NEW: Save 3D Pixaroma.** See a 3D model on the node, check which way it faces, stand it on the ground, and save it as OBJ, GLB or STL.
+- **Preview Image Pixaroma no longer makes everything after it run again.** Change a late setting and only the steps after it are redone, so 3D workflows are much quicker to tweak.
 
 ### **September 14, 2026 · v1.4.150**
 - **Load 3D Pixaroma now gives out its `width` and `height`**, so your empty latent can match the picture.
