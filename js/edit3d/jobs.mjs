@@ -75,7 +75,7 @@ export async function runHeavy(ed, op) {
     if (!src.counts.length) throw new Error("the result has no faces");
     const snap = m.snapshot("all");
     m.replaceWith({ positions: src.positions, counts: src.counts, indices: src.indices, colours: src.colours, uvs: null, texture: null, polys: true });
-    ed.mirrorC = m.center.slice();
+    ed.symC = m.center.slice();
     const label = labelFor(op, params, answer);
     ed.ops.push(snap, label);
     ed.afterGeometry();

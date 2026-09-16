@@ -24,6 +24,7 @@ ${E} .pix-e3d-axes{position:absolute;right:10px;bottom:10px;width:92px;height:92
 ${E} .pix-e3d-ring{position:absolute;display:none;border:1.5px solid ${A};border-radius:50%;pointer-events:none;z-index:4;box-shadow:0 0 0 1px rgba(0,0,0,.45),inset 0 0 0 1px rgba(0,0,0,.25);}
 ${E} .pix-e3d-ring.remove{border-color:#9fb3c8;border-style:dashed;}
 ${E} .pix-e3d-ring.move{border-color:#7ee07e;}
+${E} .pix-e3d-ring.mirror{opacity:.6;border-style:dashed;}
 ${E} .pxf-tool-info{font-size:10.5px;line-height:1.4;max-width:70%;}
 ${E} .pxf-tool-info.busy{color:${A};}
 ${E} .pxf-tool-info.help{font-family:"Segoe UI",system-ui,sans-serif;font-size:12px;color:#e4e4e4;border:1px solid rgba(246,103,68,.6);}
@@ -38,6 +39,22 @@ ${E} .pix-e3d-job .msg{line-height:1.4;}
 @keyframes pix-e3d-spin{to{transform:rotate(360deg);}}
 ${E} .pix-e3d-legend{position:absolute;right:110px;bottom:10px;z-index:5;font-size:10.5px;color:#bbb;background:rgba(0,0,0,.7);padding:5px 10px;border-radius:5px;display:none;pointer-events:none;}
 ${E} .pix-e3d-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 4px 0 8px;}
+${E} .pix-e3d-off{display:none !important;}
+${E} .pix-e3d-modes{display:flex;gap:3px;margin:8px 10px 0;background:rgba(0,0,0,.25);border:1px solid #3a3d40;border-radius:6px;padding:3px;}
+${E} .pix-e3d-modes button{flex:1;background:transparent;border:1px solid transparent;color:#aaa;font:11.5px "Segoe UI",system-ui,sans-serif;padding:6px 4px;border-radius:4px;cursor:pointer;transition:all .12s;white-space:nowrap;}
+${E} .pix-e3d-modes button:hover{color:${A};border-color:${A};}
+${E} .pix-e3d-modes button.on{background:${A};color:#fff;border-color:${A};}
+${E} .pix-e3d-check{display:flex;flex-direction:column;gap:3px;}
+${E} .pix-e3d-check-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:#bbb;background:#1c1e1f;border:1px solid #2a2c2f;border-left:2px solid #3a3d40;border-radius:4px;padding:4px 8px;}
+${E} .pix-e3d-check-row b{font-weight:400;color:#ddd;font-family:Consolas,monospace;font-size:10.5px;text-align:right;}
+${E} .pix-e3d-check-row.ok{border-left-color:#3ec371;}
+${E} .pix-e3d-check-row.warn{border-left-color:#e0a33a;}
+${E} .pix-e3d-check-row.warn b{color:#e0a33a;}
+${E} .pix-e3d-check-row.dim{color:#777;}
+${E} .pix-e3d-check-row:hover{border-color:${A};}
+// Two classes on the one element, so these beat the .pix-e3d-row rules further down whatever the order.
+${E} .pix-e3d-row.pix-e3d-symrow{margin-bottom:8px;}
+${E} .pix-e3d-row.pix-e3d-symrow > span:first-child{width:62px;}
 ${E} .pix-e3d-tools{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
 ${E} .pix-e3d-tool{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:50px;padding:0;background:#1c1e1f;border:1px solid #3a3d40;color:#ccc;border-radius:4px;cursor:pointer;font:11px "Segoe UI",system-ui,sans-serif;transition:all .12s;}
 ${E} .pix-e3d-tool svg{width:18px;height:18px;pointer-events:none;}

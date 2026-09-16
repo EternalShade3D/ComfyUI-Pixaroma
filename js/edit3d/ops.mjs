@@ -206,46 +206,93 @@ export class Ops {
   }
 
   // ── Whole model ──
+  // Each of the three carries its work in a _body, so Quick clean up can run all three as ONE step in the History.
+
+  /** Kills every face that can never be seen from outside. -> {n, shown} or null when there are none. */
+  async _insideBody(onProgress) {
+    const ed = this.ed, m = ed.model;
+    const seen = await ed.view.seenTriangles(m.seenMesh, m.T, m.center, m.radius, 96, 1024, onProgress);
+    const polySeen = new Uint8Array(m.F);
+    for (let t = 0; t < m.T; t++) if (seen[t + 1]) polySeen[m.triPoly[t]] = 1;
+    let n = 0, shown = 0;
+    for (let f = 0; f < m.F; f++) {
+      if (!m.alive[f] || m.hidden[f]) continue;
+      shown++;
+      if (!polySeen[f]) { m.alive[f] = 0; n++; }
+    }
+    if (!n) return null;
+    m.sel.fill(0);
+    return { n, shown };
+  }
+
+  /** Closes every hole of up to SMALL_HOLE edges. -> {holes, faces} or null. */
+  _fillSmallBody() {
+    const loops = this.loops(SMALL_HOLE).filter((l) => l.length <= SMALL_HOLE);
+    if (!loops.length) return null;
+    return { holes: loops.length, faces: this.fill(loops) };
+  }
+
+  /** Drops the separate pieces under LOOSE faces. -> faces removed (0 when there are none). */
+  _looseBody() {
+    const m = this.ed.model;
+    return dropLoosePieces(null, m.P, m.counts, m.indices, m.alive, LOOSE);
+  }
+
   removeInside() {
     return this.run(async () => {
-      const ed = this.ed, m = ed.model;
-      const seen = await ed.view.seenTriangles(m.seenMesh, m.T, m.center, m.radius, 96, 1024,
-        (f) => ed.ui.setBusy(`Looking at the model from 96 sides... ${Math.round(f * 100)}%`));
-      const polySeen = new Uint8Array(m.F);
-      for (let t = 0; t < m.T; t++) if (seen[t + 1]) polySeen[m.triPoly[t]] = 1;
-      let n = 0, shown = 0;
-      for (let f = 0; f < m.F; f++) {
-        if (!m.alive[f] || m.hidden[f]) continue;
-        shown++;
-        if (!polySeen[f]) { m.alive[f] = 0; n++; }
-      }
-      if (!n) { this.toast("Nothing is hidden inside this model: every surface can be seen from outside."); return false; }
-      m.sel.fill(0);
-      this.toast(`${fmtInt(n)} faces (${Math.round((100 * n) / shown)}% of the model) could never be seen from outside and are gone. Switch X-ray on and compare Before and After.`, 8000);
-      return `Remove inside surfaces (${fmtInt(n)} faces)`;
+      const ed = this.ed;
+      const r = await this._insideBody((f) => ed.ui.setBusy(`Looking at the model from 96 sides... ${Math.round(f * 100)}%`));
+      if (!r) { this.toast("Nothing is hidden inside this model: every surface can be seen from outside."); return false; }
+      this.toast(`${fmtInt(r.n)} faces (${Math.round((100 * r.n) / r.shown)}% of the model) could never be seen from outside and are gone. Switch X-ray on and compare Before and After.`, 8000);
+      return `Remove inside surfaces (${fmtInt(r.n)} faces)`;
     }, "Looking at the model from 96 sides...");
   }
 
   fillSmall() {
     return this.run(() => {
-      const m = this.ed.model;
-      const loops = this.loops(SMALL_HOLE).filter((l) => l.length <= SMALL_HOLE);
-      if (!loops.length) {
-        this.toast(m.stats.open ? `Every hole left is longer than ${SMALL_HOLE} edges. Close a big one with the Fill hole tool.` : "This model has no holes.");
+      const r = this._fillSmallBody();
+      if (!r) {
+        this.toast(this.ed.model.stats.open
+          ? `Every hole left is longer than ${SMALL_HOLE} edges. Close a big one with the Fill hole tool in Polygons mode.`
+          : "This model has no holes.");
         return false;
       }
-      const faces = this.fill(loops);
-      return `Fill small holes (${fmtInt(loops.length)} holes, ${fmtInt(faces)} faces)`;
+      return `Fill small holes (${fmtInt(r.holes)} holes, ${fmtInt(r.faces)} faces)`;
     }, "Filling the small holes...", "all");
   }
 
   removeLoose() {
     return this.run(() => {
-      const m = this.ed.model;
-      const n = dropLoosePieces(null, m.P, m.counts, m.indices, m.alive, LOOSE);
+      const n = this._looseBody();
       if (!n) { this.toast(`No loose bits: every separate piece has at least ${LOOSE} faces.`); return false; }
       return `Remove loose bits (${fmtInt(n)} faces)`;
     }, "Removing loose bits...");
+  }
+
+  /** The three fixes every AI model needs, in the order that works, as ONE step: one Undo takes all three back. */
+  quickClean() {
+    return this.run(async () => {
+      const ed = this.ed;
+      const step = (msg) => { ed.ui.setBusy(msg); return new Promise((r) => setTimeout(r, 20)); };
+      await step("Quick clean up 1 of 3: looking at the model from 96 sides...");
+      const inside = await this._insideBody((f) => ed.ui.setBusy(`Quick clean up 1 of 3: looking from 96 sides... ${Math.round(f * 100)}%`));
+      if (!ed.isOpen() || !ed.model) return false; // closed while the GPU pass ran
+      await step("Quick clean up 2 of 3: filling the small holes...");
+      const holes = this._fillSmallBody();
+      await step("Quick clean up 3 of 3: removing the loose bits...");
+      const loose = this._looseBody();
+      const parts = [];
+      if (inside) parts.push(`${fmtInt(inside.n)} faces inside`);
+      if (holes) parts.push(`${fmtInt(holes.holes)} holes`);
+      if (loose) parts.push(`${fmtInt(loose)} loose faces`);
+      if (!parts.length) {
+        this.toast("This model is already clean: nothing hidden inside, no small holes, no loose bits.");
+        return false;
+      }
+      this.toast(`Quick clean up: ${inside ? `${fmtInt(inside.n)} faces that can never be seen from outside are gone (${Math.round((100 * inside.n) / inside.shown)}% of the model)` : "nothing was hidden inside"}, `
+        + `${holes ? `${fmtInt(holes.holes)} small holes closed` : "no small holes to close"}, ${loose ? `${fmtInt(loose)} loose faces removed` : "no loose bits"}.`, 9000);
+      return `Quick clean up (${parts.join(", ")})`;
+    }, "Quick clean up...", "all");
   }
 
   closeCracks() {

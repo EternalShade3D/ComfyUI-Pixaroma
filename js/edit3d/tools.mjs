@@ -15,6 +15,9 @@ export function installTools(ed) {
   let lasso = null, lassoRemove = false, grab = null;
 
   const reflect = (v, a, c) => { const o = v.clone(); o.setComponent(a, 2 * c - o.getComponent(a)); return o; };
+  /** The symmetry axis as an index, or -1 when Symmetry is off. The plane is ed.symC, the model's middle as it opened. */
+  const symAxis = () => { const a = AXIS[ed.prefs.symmetry]; return a === undefined ? -1 : a; };
+  const hideRings = () => { view.ring.style.display = "none"; view.ring2.style.display = "none"; };
   const facing = (m, p, cam) => ed.prefs.through
     || m.ptN[3 * p] * (cam.x - m.pos[3 * p]) + m.ptN[3 * p + 1] * (cam.y - m.pos[3 * p + 1]) + m.ptN[3 * p + 2] * (cam.z - m.pos[3 * p + 2]) > 0;
   const capture = (ev) => { try { canvas.setPointerCapture(ev.pointerId); } catch (_e) { /* a nicety */ } };
@@ -57,12 +60,28 @@ export function installTools(ed) {
     return Math.max(3, Math.hypot(((_b.x - _a.x) * rect.width) / 2, ((_b.y - _a.y) * rect.height) / 2));
   }
 
-  /** The brush centre, and its mirror image seen by the mirrored camera when Mirror is on. */
+  /** The brush centre, and its mirror image seen by the mirrored camera when Symmetry is on. */
   function centres(point) {
     const out = [{ c: point, cam: view.camera.position }];
-    const a = AXIS[ed.prefs.mirror];
-    if (a !== undefined) out.push({ c: reflect(point, a, ed.mirrorC[a]), cam: reflect(view.camera.position, a, ed.mirrorC[a]) });
+    const a = symAxis();
+    if (a >= 0) out.push({ c: reflect(point, a, ed.symC[a]), cam: reflect(view.camera.position, a, ed.symC[a]) });
     return out;
+  }
+
+  /** The ring where the brush ALSO works while Symmetry is on, so it is seen before the press. */
+  function drawMirrorRing(point, r, cls, wr) {
+    const ring2 = view.ring2, a = symAxis();
+    if (a < 0) { ring2.style.display = "none"; return; }
+    const q = reflect(point, a, ed.symC[a]);
+    const rad = screenRadius(q, r);
+    const v = q.clone().project(view.camera);
+    if (v.z > 1) { ring2.style.display = "none"; return; }
+    const cr = canvas.getBoundingClientRect();
+    ring2.style.display = "block";
+    ring2.className = cls + " mirror";
+    ring2.style.width = ring2.style.height = 2 * rad + "px";
+    ring2.style.left = cr.left - wr.left + ((v.x + 1) / 2) * cr.width - rad + "px";
+    ring2.style.top = cr.top - wr.top + ((1 - v.y) / 2) * cr.height - rad + "px";
   }
 
   function brushAt(point, remove) {
@@ -82,6 +101,7 @@ export function installTools(ed) {
     if (ev.button !== 0) return;
     const m = ed.model;
     if (!m || !ed.loaded) return;
+    if (ed.prefs.mode !== "polys") return; // the tools belong to Polygons mode
     if (ed.busy) { ed.ui.toast("Wait for the current job to finish, or press Stop.", 3000); return; }
     if (ed.showingBefore) ed.setBeforeAfter("after");
     const t = ed.tool;
@@ -129,7 +149,7 @@ export function installTools(ed) {
   }
 
   function onLeave() {
-    if (!painting && !grab) view.ring.style.display = "none";
+    if (!painting && !grab) hideRings();
   }
 
   function step() {
@@ -149,10 +169,10 @@ export function installTools(ed) {
       return;
     }
     const t = ed.tool, ring = view.ring;
-    const brushTool = t === "select" || t === "erase" || t === "move";
-    if (!brushTool || ed.showingBefore || ed.busy || ev.buttons & 6) { ring.style.display = "none"; return; }
+    const brushTool = ed.prefs.mode === "polys" && (t === "select" || t === "erase" || t === "move");
+    if (!brushTool || ed.showingBefore || ed.busy || ev.buttons & 6) { hideRings(); return; }
     const hit = hitAt(ev.clientX, ev.clientY);
-    if (!hit) { ring.style.display = "none"; lastHit = null; return; }
+    if (!hit) { hideRings(); lastHit = null; return; }
     const r = ed.brushRadius(), rad = screenRadius(hit.point, r), wr = ed.layout.workspace.getBoundingClientRect();
     ring.style.display = "block";
     ring.style.width = ring.style.height = 2 * rad + "px";
@@ -160,6 +180,7 @@ export function installTools(ed) {
     ring.style.top = ev.clientY - wr.top - rad + "px";
     const remove = t === "erase" || ev.ctrlKey || ev.metaKey;
     ring.className = "pix-e3d-ring" + (t === "move" ? " move" : remove ? " remove" : "");
+    drawMirrorRing(hit.point, r, ring.className, wr);
     if (!painting) return;
     // A jump longer than 12 brush sizes is a move to another part of the model, not a stroke, so it is not bridged.
     let changed = false;
@@ -184,18 +205,26 @@ export function installTools(ed) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     const project = projector(), s = [0, 0], cam = view.camera.position;
+    const a = symAxis(), c = a >= 0 ? ed.symC[a] : 0, camM = a >= 0 ? reflect(cam, a, c) : null;
     const { pos, ptVis, sel, P } = m, val = remove ? 0 : 1;
-    let n = 0;
+    const inLoop = (x, y, z) => project(x, y, z, s) && s[0] >= x0 && s[0] <= x1 && s[1] >= y0 && s[1] <= y1 && pointInPolygon(s[0], s[1], poly);
+    let n = 0, mirrored = 0;
     for (let p = 0; p < P; p++) {
-      if (sel[p] === val || !ptVis[p] || !facing(m, p, cam)) continue;
-      if (!project(pos[3 * p], pos[3 * p + 1], pos[3 * p + 2], s)) continue;
-      if (s[0] < x0 || s[0] > x1 || s[1] < y0 || s[1] > y1 || !pointInPolygon(s[0], s[1], poly)) continue;
+      if (sel[p] === val || !ptVis[p]) continue;
+      const x = pos[3 * p], y = pos[3 * p + 1], z = pos[3 * p + 2];
+      let take = facing(m, p, cam) && inLoop(x, y, z);
+      // Symmetry: a point whose mirror image falls inside the loop is taken too, seen from the mirrored camera.
+      if (!take && camM && facing(m, p, camM)) {
+        take = a === 0 ? inLoop(2 * c - x, y, z) : a === 1 ? inLoop(x, 2 * c - y, z) : inLoop(x, y, 2 * c - z);
+        if (take) mirrored++;
+      }
+      if (!take) continue;
       sel[p] = val;
       n++;
     }
     ed.recolour();
     ed.ui.refreshInfo();
-    if (n) ed.ui.toast(`Lasso: ${fmtInt(n)} points ${remove ? "taken out of" : "added to"} the selection.`, 3500);
+    if (n) ed.ui.toast(`Lasso: ${fmtInt(n)} points ${remove ? "taken out of" : "added to"} the selection${mirrored ? `, ${fmtInt(mirrored)} of them on the other side` : ""}.`, 3500);
   }
 
   const markFaces = (m, faces, mark) => {
@@ -203,32 +232,75 @@ export function installTools(ed) {
     return mark;
   };
 
+  /**
+   * The face on the other side of the symmetry plane: the visible triangle nearest the mirrored point that faces the
+   * mirrored way. -> a triangle index, or -1 when Symmetry is off, the click sits on the plane, or nothing matches.
+   */
+  function mirrorFace(hit) {
+    const a = symAxis();
+    if (a < 0) return -1;
+    const m = ed.model, c = ed.symC[a];
+    if (Math.abs(hit.point.getComponent(a) - c) < m.diag * 0.004) return -1; // a click on the plane has no other side
+    const q = reflect(hit.point, a, c);
+    const want = [m.fnUnit[3 * hit.t], m.fnUnit[3 * hit.t + 1], m.fnUnit[3 * hit.t + 2]];
+    want[a] = -want[a];
+    const { pfOff, pf } = m.adj, fn = m.fnUnit;
+    // Close by and facing the same way first; then further out and any direction, for a model that is not exact.
+    for (const [reach, minDot] of [[0.02, 0.2], [0.06, -0.2]]) {
+      const r = m.diag * reach;
+      m.ensureGrid(r);
+      let best = -1, bestScore = Infinity;
+      m.pointsNear(q.x, q.y, q.z, r, (p, d2) => {
+        const d = Math.sqrt(d2) / r;
+        for (let j = pfOff[p], e = pfOff[p + 1]; j < e; j++) {
+          const t = pf[j];
+          if (!m.vis[t] || t === hit.t) continue;
+          const dot = want[0] * fn[3 * t] + want[1] * fn[3 * t + 1] + want[2] * fn[3 * t + 2];
+          if (dot < minDot) continue;
+          const score = d + (1 - dot);
+          if (score < bestScore) { bestScore = score; best = t; }
+        }
+      });
+      if (best >= 0) return best;
+    }
+    return -1;
+  }
+
   function pickPanel(hit, add) {
     const m = ed.model;
-    const faces = floodPanel(m.cp, m.fnUnit, m.vis, m.adj.pfOff, m.adj.pf, hit.t, ed.opts.flat);
+    const panelAt = (t) => floodPanel(m.cp, m.fnUnit, m.vis, m.adj.pfOff, m.adj.pf, t, ed.opts.flat);
+    const faces = panelAt(hit.t);
     if (!add) m.sel.fill(0);
     markFaces(m, faces, m.sel);
+    const t2 = mirrorFace(hit);
+    const other = t2 >= 0 ? panelAt(t2) : null;
+    if (other) markFaces(m, other, m.sel);
     ed.recolour();
     ed.ui.refreshInfo();
-    ed.ui.toast(`Panel: ${fmtInt(faces.length)} triangles selected. Now try Flatten, Straighten or Smooth on the right.`, 4000);
+    const n = faces.length + (other ? other.length : 0);
+    ed.ui.toast(`Panel: ${fmtInt(n)} triangles selected${other ? ", on both sides" : ""}. Now try Flatten, Straighten or Smooth on the right.`, 4000);
   }
 
   function pickPiece(hit, add) {
     const m = ed.model;
     if (m.censusDirty) ed.census();
-    const comp = m.faceComp[hit.poly];
-    if (comp == null || comp < 0) return;
+    const want = new Set();
+    const addComp = (poly) => { const c = m.faceComp[poly]; if (c != null && c >= 0) want.add(c); };
+    addComp(hit.poly);
+    const t2 = mirrorFace(hit);
+    if (t2 >= 0) addComp(m.triPoly[t2]);
+    if (!want.size) return;
     if (!add) m.sel.fill(0);
     const { counts, indices, starts, alive, hidden, faceComp, sel } = m;
     let n = 0;
     for (let f = 0; f < m.F; f++) {
-      if (!alive[f] || hidden[f] || faceComp[f] !== comp) continue;
+      if (!alive[f] || hidden[f] || !want.has(faceComp[f])) continue;
       for (let k = 0, s = starts[f]; k < counts[f]; k++) sel[indices[s + k]] = 1;
       n++;
     }
     ed.recolour();
     ed.ui.refreshInfo();
-    ed.ui.toast(`Piece: ${fmtInt(n)} faces, one of the ${fmtInt(m.stats.pieces)} separate pieces of this model. Delete removes it, Isolate shows it alone.`, 4500);
+    ed.ui.toast(`Piece: ${fmtInt(n)} faces${want.size > 1 ? " in two pieces" : ""}, of the ${fmtInt(m.stats.pieces)} separate pieces of this model. Delete removes them, Isolate shows them alone.`, 4500);
   }
 
   function pickEdgePanel(hit) {
@@ -274,10 +346,10 @@ export function installTools(ed) {
       if (idx.length) sets.push({ idx: Int32Array.from(idx), w: Float32Array.from(w), flip });
     };
     collect(hit.point, view.camera.position, -1);
-    const a = AXIS[ed.prefs.mirror];
-    // Only when the brush is off the mirror plane, or the two halves would pull the same points twice.
-    if (a !== undefined && Math.abs(hit.point.getComponent(a) - ed.mirrorC[a]) > r * 0.5) {
-      collect(reflect(hit.point, a, ed.mirrorC[a]), reflect(view.camera.position, a, ed.mirrorC[a]), a);
+    const a = symAxis();
+    // Only when the brush is off the symmetry plane, or the two halves would pull the same points twice.
+    if (a >= 0 && Math.abs(hit.point.getComponent(a) - ed.symC[a]) > r * 0.5) {
+      collect(reflect(hit.point, a, ed.symC[a]), reflect(view.camera.position, a, ed.symC[a]), a);
     }
     if (!sets.length) return;
     const touched = new Int32Array(sets.reduce((n, s) => n + s.idx.length, 0));
@@ -325,7 +397,7 @@ export function installTools(ed) {
       lastHit = null;
       if (lasso) { lasso = null; view.drawLasso(null); }
       if (grab) endGrab();
-      view.ring.style.display = "none";
+      hideRings();
     },
     dispose() {
       cancelAnimationFrame(raf);

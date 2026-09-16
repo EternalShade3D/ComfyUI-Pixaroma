@@ -3,24 +3,35 @@
 
 export const EDIT3D_HELP = {
   title: "Edit 3D Pixaroma",
-  tagline: "Clean up a 3D model by hand and with one-click buttons, then hand the edited model on or save it to disk.",
+  tagline: "Clean up a 3D model in a fullscreen editor: one-click fixes for the whole model, hand tools for the exact faces you pick, then hand the edited model on or save it to disk.",
   sections: [
     {
       heading: "What it does",
       body:
         "3D models made by AI (Pixal3D, Trellis 2, Hunyuan 3D) come out with a hidden second skin inside, small holes, loose specks, " +
-        "wavy flat panels and soft edges. Edit 3D opens the model in a fullscreen editor where buttons do the big jobs in one click " +
-        "(Remove inside surfaces, Fill small holes, Quads, Make solid...) and your own tools fix exactly the parts you pick " +
-        "(Flatten a wavy panel, Sharpen an edge, Delete a loose piece). Nothing changes that you did not ask for, and every step can be undone.",
+        "wavy flat panels and soft edges. Edit 3D opens the model in a fullscreen editor with a mode for each kind of work: " +
+        "Whole model, where one press fixes everything at once (Remove inside surfaces, Fill small holes, Quads, Make solid...), " +
+        "and Polygons, where you pick exactly the faces you mean and fix only those (Flatten a wavy panel, Sharpen an edge, " +
+        "Delete a loose piece). Nothing changes that you did not ask for, and every step can be undone.",
     },
     {
       heading: "Quick start",
       bullets: [
         "Pick a model on the node, press Upload to add one, or wire a mesh (from Pixal3D or Trellis 2) or a model_3d (from Load 3D Pixaroma) into it. A wired model needs one Run first.",
-        "Press Open Edit 3D.",
-        "On the right, press Remove inside surfaces, then Fill small holes, then Remove loose bits.",
-        "Fix what still looks wrong: pick an area with a tool on the left, then press a button under Fix the selection.",
+        "Press Open Edit 3D. It opens in Whole model mode, and Model check on the left says what this model needs.",
+        "Press Quick clean up. That is Remove inside surfaces, Fill small holes and Remove loose bits in one press, and one Undo takes all three back.",
+        "Switch to Polygons mode for what still looks wrong: pick an area with a tool on the left, then press a button under Fix the selection.",
         "Press Save. The editor closes, the node shows a picture of your edit, and the next Run hands the edited model on. Save to Disk writes a file into output/3d instead.",
+      ],
+    },
+    {
+      heading: "The modes",
+      body:
+        "The switch at the top left decides what the editor shows. It never changes the model, so you can switch as often as you like, "
+        + "and the view, the looks, Before and After, Undo, the History and both Save buttons are there in every mode.",
+      defs: [
+        ["Whole model", "One press, the whole model, nothing to pick first. Model check on the left lists what is wrong and which button fixes it; the buttons on the right do the work."],
+        ["Polygons", "Pick the exact faces you mean with the tools on the left, then fix only those on the right. This is where the brushes, Lasso, Panel, Piece, Hide and Isolate live."],
       ],
     },
     {
@@ -36,7 +47,7 @@ export const EDIT3D_HELP = {
       ],
     },
     {
-      heading: "The tools (left)",
+      heading: "Polygons mode: the tools",
       table: {
         headers: ["Tool", "What it does", "Example"],
         rows: [
@@ -52,18 +63,20 @@ export const EDIT3D_HELP = {
       },
     },
     {
-      heading: "Selection and the options bar",
+      heading: "Symmetry, selection and the options bar",
       bullets: [
+        "Symmetry (in the Selection panel) is off, X, Y or Z. With an axis on, every tool works on both sides of the model at once: Select, Deselect, Lasso, Panel, Piece and Move. Example: Symmetry X, then click a dent with Panel and the dent on the other side is picked too, so one Flatten fixes both. A second dashed ring shows where the brush is also working.",
+        "The middle it mirrors around is the middle of the model as it opened, and it stays there even after you delete half of it.",
+        "Symmetry is not the same as Make both sides match. Symmetry only makes the tools work twice; Make both sides match rebuilds the model out of one half.",
         "All, None and Invert work on what is shown. Grow and Shrink add or take away one row of points at the edge.",
         "Hide puts the selected faces out of sight so you can reach what is behind them; Isolate shows only the selection; Show all brings everything back. Example: Isolate a gun's grip to smooth it without touching the rest.",
         "Brush size sets how wide Select, Deselect and Move reach, in millimetres on a 100 mm print. The [ and ] keys change it.",
         "Facing me selects only the surface turned towards you; Through reaches the far side too. Example: Through with Lasso selects both sides of a thin wing at once.",
-        "Mirror: X, Y or Z makes the brushes and Move work on both sides of a symmetric model at once.",
         "How flat (Panel) sets how much tilt still counts as the same panel: a higher value takes in gentle curves.",
       ],
     },
     {
-      heading: "Fix the selection (right)",
+      heading: "Polygons mode: fix the selection",
       table: {
         headers: ["Button", "What it does", "Example"],
         rows: [
@@ -77,10 +90,14 @@ export const EDIT3D_HELP = {
       },
     },
     {
-      heading: "Whole model (right)",
+      heading: "Whole model mode",
+      body:
+        "Model check on the left is the list of what is wrong with this model: faces, pieces, holes, broken edges. A green line is fine, "
+        + "an amber one needs a button, and hovering the line says which one. The buttons are on the right.",
       table: {
         headers: ["Button", "What it does", "Example"],
         rows: [
+          ["Quick clean up", "Remove inside surfaces, Fill small holes and Remove loose bits, in that order, in one press. It counts as one step, so one Undo takes all three back.", "The first thing to press on a fresh Pixal3D or Trellis 2 model."],
           ["Remove inside surfaces", "Removes every face that can never be seen from outside: the second skin AI models carry inside. Often more than half the model.", "First button on any Pixal3D or Trellis 2 model."],
           ["Fill small holes", "Closes every hole of up to 16 edges and leaves big openings alone. Close a big one with the Fill hole tool.", "After Remove inside surfaces, to seal the pinholes."],
           ["Remove loose bits", "Removes separate pieces smaller than 8 faces.", "The specks floating around a generated character."],
@@ -88,7 +105,7 @@ export const EDIT3D_HELP = {
           ["Quads", "Lays a clean grid of quads over the whole model, following its crisp edges. 200K keeps small details, 50K is light.", "Before sending a model to Blender or a game engine."],
           ["Reduce polygons", "Removes 25, 50 or 75% of the triangles while keeping the shape.", "A 1.5 million triangle model for a web viewer: -75%."],
           ["Make solid", "Rebuilds the model as one closed solid for 3D printing. More detail keeps more of the shape and takes longer.", "Last step before printing, at 384."],
-          ["Mirror", "Keeps one side (+ or -) along X, Y or Z and copies it onto the other, so both match exactly.", "A character whose left arm came out better: Mirror X, keep the good side."],
+          ["Make both sides match", "Throws one side away along X, Y or Z and copies the other over it, so the two halves are exactly the same. This one rebuilds the model, unlike the Symmetry switch.", "A character whose left arm came out better: X, and keep the good side."],
         ],
       },
     },
@@ -115,7 +132,7 @@ export const EDIT3D_HELP = {
       table: {
         headers: ["Key", "Does"],
         rows: [
-          ["B D L P I M E O", "Select, Deselect, Lasso, Panel, Piece, Move, Sharpen edge, Fill hole"],
+          ["B D L P I M E O", "Select, Deselect, Lasso, Panel, Piece, Move, Sharpen edge, Fill hole (any of them switches to Polygons mode)"],
           ["1 / Ctrl+1", "Front / Back"],
           ["3 / Ctrl+3", "Right / Left"],
           ["7 / Ctrl+7", "Top / Bottom"],
@@ -133,9 +150,9 @@ export const EDIT3D_HELP = {
     {
       heading: "Good to know",
       bullets: [
-        "Your hand tools, Remove inside surfaces and the fills keep a model's texture. Quads, Reduce polygons, Make solid and Mirror build new faces, so the texture becomes colours on them.",
+        "Your hand tools, Remove inside surfaces and the fills keep a model's texture. Quads, Reduce polygons, Make solid and Make both sides match build new faces, so the texture becomes colours on them.",
         "The editor keeps the colour texture of a model. A PBR model's other maps (normal, roughness, metal) are not kept, so an edited PBR model looks a little flatter in a renderer that uses them.",
-        "Quads, Reduce polygons, Make solid and Mirror run through ComfyUI's queue: while a generation is running they wait for it, and the page pauses for a few seconds while Quads works.",
+        "Quads, Reduce polygons, Make solid and Make both sides match run through ComfyUI's queue: while a generation is running they wait for it, and the page pauses for a few seconds while Quads works.",
         "When the model wired in changes (a new generation, say), the node passes it on unedited and says so: open the editor and edit the new model.",
         "Close cracks can leave a few broken edges, where three faces now share one edge. For 3D printing, finish with Make solid, which always gives one closed solid.",
         "FBX and PLY files open in the editor, and need one Save before the node can hand them on.",

@@ -6,7 +6,7 @@ import { app } from "/scripts/app.js";
 import { createEditorLayout } from "../framework/index.mjs";
 import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 import { notifyGraphChanged } from "../shared/graph_changed.mjs";
-import { readState, writeState, sourceRef, editedName, snapName, fileIdFor, sanitizePrefs, SUBFOLDER, MAX_EDITS, fmtInt } from "./core.mjs";
+import { readState, writeState, sourceRef, editedName, snapName, fileIdFor, sanitizePrefs, MODES, SUBFOLDER, MAX_EDITS, fmtInt } from "./core.mjs";
 import { fetchModel, upload } from "./server.mjs";
 import { loadThree, parseSource } from "./loaders.mjs";
 import { createView } from "./view.mjs";
@@ -71,7 +71,7 @@ class Edit3DEditor {
     this.loaded = false;
     this.closed = false;
     this.layout = this.view = this.THREE = this.model = this.before = this.ui = this.ops = this.tools = null;
-    this.mirrorC = [0, 0, 0];
+    this.symC = [0, 0, 0]; // the symmetry plane: the middle of the model as it opened
     this.loadMsg = "Loading the model...";
     this.loadError = false;
     this.fileId = fileIdFor(node, node.graph || app.graph);
@@ -139,7 +139,7 @@ class Edit3DEditor {
       this.before.visible = false;
       this.view.scene.add(this.model.mesh, this.before);
       this.model.refreshGeometry();
-      this.mirrorC = this.model.center.slice();
+      this.symC = this.model.center.slice();
       this.ops = new Ops(this);
       this.tools = installTools(this);
       this.loaded = true;
@@ -240,11 +240,37 @@ class Edit3DEditor {
     this.ui.syncSwitches();
   }
 
+  /** The mode decides which panels are on screen. It changes nothing about the model, so switching is always safe. */
+  setMode(mode) {
+    if (!MODES.includes(mode)) return;
+    this.prefs.mode = mode;
+    this.tools?.cancel();
+    this.hideRings();
+    this.ui.setMode(mode);
+    this.syncMarkers();
+  }
+
+  setSymmetry(v) {
+    this.prefs.symmetry = v;
+    if (v === "off") this.hideRings();
+    this.ui.syncSegKey("sym");
+    this.ui.renderOptions();
+    this.view?.requestDraw();
+  }
+
+  hideRings() {
+    if (!this.view) return;
+    this.view.ring.style.display = "none";
+    this.view.ring2.style.display = "none";
+  }
+
   setTool(t) {
+    // Every tool belongs to Polygons mode, so its key takes you there instead of doing nothing.
+    if (this.prefs.mode !== "polys") this.setMode("polys");
     this.tools?.cancel();
     this.tool = t;
     this.ui.setToolActive(t);
-    if (this.view) this.view.ring.style.display = "none";
+    this.hideRings();
     this.ui.renderOptions();
     this.syncMarkers();
   }

@@ -19,8 +19,11 @@ export function createView(THREE, OrbitControls, workspace) {
   axes.width = axes.height = 184;
   const ring = document.createElement("div");
   ring.className = "pix-e3d-ring";
+  // The second ring is where the brush also works while Symmetry is on, so it is seen before the press, not after.
+  const ring2 = document.createElement("div");
+  ring2.className = "pix-e3d-ring mirror";
   workspace.prepend(canvas);
-  workspace.append(lasso, axes, ring);
+  workspace.append(lasso, axes, ring, ring2);
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -52,7 +55,7 @@ export function createView(THREE, OrbitControls, workspace) {
   const _q = new THREE.Quaternion(), _ax = new THREE.Vector3();
 
   const view = {
-    THREE, renderer, scene, camera, controls, canvas, lasso, lctx, axes, ring,
+    THREE, renderer, scene, camera, controls, canvas, lasso, lctx, axes, ring, ring2,
     center: new THREE.Vector3(), radius: 1, fitDist: 4, dirty: true, disposed: false, onCamera: null, raf: 0,
   };
 
@@ -290,7 +293,7 @@ export function createView(THREE, OrbitControls, workspace) {
     pickTarget.dispose();
     renderer.dispose();
     try { renderer.forceContextLoss(); } catch (_e) { /* no context */ }
-    for (const e of [canvas, lasso, axes, ring]) e.remove();
+    for (const e of [canvas, lasso, axes, ring, ring2]) e.remove();
   };
   return view;
 }

@@ -19,13 +19,17 @@ export const SUBFOLDER = "pixaroma_edit3d";
 export const NONE = "none";
 export const MAX_EDITS = 12;
 export const LOOKS = ["clay", "color", "wire", "normal"];
-export const MIRROR_AXES = ["off", "x", "y", "z"];
+export const SYM_AXES = ["off", "x", "y", "z"];
+// The editing modes, in the order of the switch at the top of the left column. "sculpt" joins them with the brushes.
+export const MODES = ["model", "polys"];
 
 // The SAME rule as nodes/_edit3d_helpers.py EDITED_NAME.
 const EDITED_RE = /^edit3d_(?![A-Za-z0-9_-]*_work(?:_out)?\.)[A-Za-z0-9_-]{1,40}\.(obj|glb)$/;
 const FILE_ID_RE = /^[a-z0-9]{12}$/;
 
-export const DEFAULT_PREFS = Object.freeze({ look: "clay", mirror: "off", through: false, brush: 0.03, xray: false, holes: false });
+export const DEFAULT_PREFS = Object.freeze({
+  look: "clay", symmetry: "off", through: false, brush: 0.03, xray: false, holes: false, mode: "model",
+});
 export const DEFAULT_STATE = Object.freeze({
   edited: "", sourceKey: "", editCount: 0, edits: [], stamp: 0, fileId: "", prefs: DEFAULT_PREFS,
 });
@@ -37,7 +41,10 @@ export function sanitizePrefs(raw) {
   const D = DEFAULT_PREFS;
   return {
     look: LOOKS.includes(s.look) ? s.look : D.look,
-    mirror: MIRROR_AXES.includes(s.mirror) ? s.mirror : D.mirror,
+    // Symmetry was called mirror before the modes, which is also the name of a whole-model button: a node saved then
+    // keeps its axis.
+    symmetry: SYM_AXES.includes(s.symmetry) ? s.symmetry : SYM_AXES.includes(s.mirror) ? s.mirror : D.symmetry,
+    mode: MODES.includes(s.mode) ? s.mode : D.mode,
     through: typeof s.through === "boolean" ? s.through : D.through,
     brush: num(s.brush, 0.002, 0.3, D.brush),
     xray: typeof s.xray === "boolean" ? s.xray : D.xray,
