@@ -10,8 +10,12 @@ const SEL = [0.965, 0.404, 0.267];
 // (Whole model mode, and Sculpt with the Selection setting off): reported 2026-09-16 as a selection that follows
 // you into a mode that appears to have no use for it. Dimmed rather than hidden, so a careful pick is never lost
 // and turning the Selection setting on visibly brings it back to life.
+// 0.32 is MEASURED, not guessed: the blends were rendered as swatches against a pale, a clay and a dark surface.
+// At 0.18 the faint tint is clear on clay and dark but nearly invisible on a PALE model, which turns "dim" into
+// "hidden" and defeats the point. Judge any change to it on the pale case, and WITHOUT an untinted patch beside it
+// for reference: side by side flatters a value that is far too faint on its own.
 const SEL_MIX = 0.65;
-const SEL_MIX_IDLE = 0.18;
+const SEL_MIX_IDLE = 0.32;
 const BLUE = [0.18, 0.45, 0.9];
 const GREEN = [0.25, 0.72, 0.4];
 const CLAY = 0.62;
