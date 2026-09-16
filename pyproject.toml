@@ -11,8 +11,8 @@ keywords = ["comfyui", "image-editor", "3d", "paint", "layers", "compositor", "c
 # Video, Load Video, Load Video Frame, First Last Frame). It was previously left
 # undeclared, which worked only where another pack happened to install it - so a
 # Desktop or portable install got "ffmpeg was not found" with nothing to explain it.
-# pyinstantmeshes is the Instant Meshes quad remesher (BSD-3) behind Quad Remesh
-# Pixaroma. It ships ready wheels ONLY for Python 3.11-3.14 on Windows x64/x86,
+# pyinstantmeshes is the Instant Meshes quad remesher (BSD-3) behind the Quads
+# button of Edit 3D Pixaroma. It ships ready wheels ONLY for Python 3.11-3.14 on Windows x64/x86,
 # Linux x86_64 and Apple Silicon Macs; anywhere else pip would try to compile it
 # from source, fail, and abort the whole install (imageio-ffmpeg with it), so the
 # marker skips those machines and the node itself says the engine is missing.
