@@ -250,11 +250,117 @@ export function brushBuildUp(ctx) {
   return moved;
 }
 
+/**
+ * How far a point stands off the middle of its own neighbours, measured in edge lengths so it means the same thing
+ * on a coarse patch and a fine one. A smooth surface gives roughly 0.01 to 0.05; a spike gives 1 and upwards.
+ * Fills `out` with the neighbours' middle. -> the ratio, or -1 for a point with no neighbours.
+ */
+function umbrella(pos, nbOff, nb, p, out) {
+  let sx = 0, sy = 0, sz = 0, len = 0, m = 0;
+  for (let j = nbOff[p], e = nbOff[p + 1]; j < e; j++) {
+    const q = nb[j];
+    sx += pos[3 * q]; sy += pos[3 * q + 1]; sz += pos[3 * q + 2];
+    len += Math.hypot(pos[3 * q] - pos[3 * p], pos[3 * q + 1] - pos[3 * p + 1], pos[3 * q + 2] - pos[3 * p + 2]);
+    m++;
+  }
+  if (!m) return -1;
+  out[0] = sx / m; out[1] = sy / m; out[2] = sz / m;
+  const avgLen = len / m;
+  if (avgLen < 1e-12) return -1;
+  return Math.hypot(pos[3 * p] - out[0], pos[3 * p + 1] - out[1], pos[3 * p + 2] - out[2]) / avgLen;
+}
+
+const SPIKE_OFF = 0.3; // edge lengths a point must stand off its neighbours before it counts as a spike at all
+
+/**
+ * Is p on the rim of a hole? `buildAdjacency` lists a neighbour ONCE PER TRIANGLE, so an inside point has every
+ * neighbour twice and a rim point has two of them once. An umbrella offset is meaningless on a rim: the ring is
+ * only half a ring, so its middle sits well off to one side and EVERY rim point reads as a spike. Measured before
+ * this guard: one spike in a flat 11 by 11 grid, and the brush "fixed" 27 points, 26 of them the border.
+ */
+function onBoundary(nbOff, nb, p) {
+  const s = nbOff[p], e = nbOff[p + 1];
+  for (let i = s; i < e; i++) {
+    const q = nb[i];
+    let seen = 0;
+    for (let j = s; j < e; j++) if (nb[j] === q) seen++;
+    if (seen === 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Fix spikes: snaps the points that stand out from their OWN neighbours back onto them, and touches nothing else.
+ * One click, no dragging, and it cannot be half done, because half a spike is still a spike.
+ *
+ * The trap this has to avoid is eating real edges: the apex of a sharp crease also stands off its neighbours (about
+ * 0.42 edge lengths on a 90 degree fold), so an offset test alone would chamfer every panel line on the model. What
+ * separates them is the NEIGHBOURS: along a crease the neighbours stand off too, while around a lone spike they sit
+ * flat. So a point is only a spike when it stands off AND its neighbours do not.
+ */
+export function brushSpike(ctx) {
+  const { pos, idx, k, adj } = ctx;
+  const { nbOff, nb } = adj;
+  const mid = [0, 0, 0], nbMid = [0, 0, 0];
+  // EVERY decision is made against the untouched surface, and only then are the points moved. Judging as it walks
+  // destroys the evidence the crease test needs: traced on a test roof, snapping the first ridge point flattened
+  // it, so the next point no longer saw a line of standing-off neighbours beside it and the brush ate the whole
+  // ridge one point at a time (dev drifting 0.482, 0.549, 0.56 as it went). Smooth and Even out already write
+  // through a scratch buffer for the same reason.
+  const plan = ctx.scratch(4 * idx.length);
+  let fixed = 0;
+  for (let i = 0; i < idx.length; i++) {
+    plan[4 * i + 3] = 0;
+    const p = idx[i];
+    if (onBoundary(nbOff, nb, p)) continue; // the rim of a hole is not a spike
+    const dev = umbrella(pos, nbOff, nb, p, mid);
+    if (dev < SPIKE_OFF) continue;
+    // A CREASE IS A LINE AND A SPIKE IS A BLOB: that, and not the size of the offsets, is what separates them on a
+    // real mesh. Comparing a point against its neighbours' offsets does NOT work, because a real pulled vertex
+    // drags its whole ring off the surface with it. Measured on the Ep34 gun: the spike stood off 0.993 edge
+    // lengths and its worst neighbour 0.761, so a "my neighbours are flatter than me" test vetoed the very case
+    // this brush exists for, while every synthetic fixture passed because their rings were perfectly flat.
+    // So: count the neighbours that also stand off. A ridge running through p has FEW of them (the two next points
+    // along the ridge) and they sit on OPPOSITE sides; a tent has most of its ring standing off, in no such line.
+    let high = 0, firstX = 0, firstY = 0, firstZ = 0, opposed = false, touchesRim = false;
+    for (let j = nbOff[p], e = nbOff[p + 1]; j < e; j++) {
+      const q = nb[j];
+      if (onBoundary(nbOff, nb, q)) { touchesRim = true; continue; } // a rim neighbour proves nothing either way
+      if (umbrella(pos, nbOff, nb, q, nbMid) < dev * 0.5) continue;
+      let dx = pos[3 * q] - pos[3 * p], dy = pos[3 * q + 1] - pos[3 * p + 1], dz = pos[3 * q + 2] - pos[3 * p + 2];
+      const l = Math.hypot(dx, dy, dz);
+      if (l < 1e-12) continue;
+      dx /= l; dy /= l; dz /= l;
+      high++;
+      if (high === 1) { firstX = dx; firstY = dy; firstZ = dz; } else if (firstX * dx + firstY * dy + firstZ * dz < -0.5) opposed = true;
+    }
+    // A line of standing-off points runs through it: a crease, not a spike. At the END of a crease one side is a
+    // rim, so there is nothing opposite to find; one standing-off neighbour beside a rim is treated as that case
+    // rather than eaten, since chamfering the end of every panel line is worse than leaving one point alone.
+    if (opposed || (touchesRim && high >= 1)) continue;
+    plan[4 * i] = mid[0]; plan[4 * i + 1] = mid[1]; plan[4 * i + 2] = mid[2];
+    plan[4 * i + 3] = 1;
+    fixed++;
+  }
+  for (let i = 0; i < idx.length; i++) {
+    if (!plan[4 * i + 3]) continue;
+    const p = idx[i];
+    pos[3 * p] += (plan[4 * i] - pos[3 * p]) * k;
+    pos[3 * p + 1] += (plan[4 * i + 1] - pos[3 * p + 1]) * k;
+    pos[3 * p + 2] += (plan[4 * i + 2] - pos[3 * p + 2]) * k;
+  }
+  return fixed;
+}
+
 /** The palette, in the order it is shown. `strength` is the default for that brush, tuned by hand on real models. */
 export const BRUSHES = [
   {
     id: "smooth", label: "Smooth", apply: brushSmooth, strength: 0.5,
     help: "Evens the surface out towards its neighbours, and stops at a crease so a crisp edge beside it survives. Hold Ctrl to sharpen instead. Example: paint over the stair steps on a curved AI surface.",
+  },
+  {
+    id: "spike", label: "Fix spikes", apply: brushSpike, strength: 1, counts: "changed",
+    help: "Click on a point that sticks out of an otherwise smooth surface and it drops back level with its neighbours. It only touches points that stand off on their own, so a real panel edge beside it is left alone, and it needs a click rather than a drag. Example: the single pulled vertex that makes a little tent in a flat area.",
   },
   {
     id: "even", label: "Even out", apply: brushEven, strength: 0.6,

@@ -58,7 +58,10 @@ export const EDIT3D_HELP = {
         + "in a surface that is otherwise good. SCRAPE is its opposite and takes off only what sticks out. "
         + "EVEN OUT changes no shape at all, it only spreads the points evenly, so it will never fix a dent.\n\n"
         + "So: dents in the flat side of a gun means Fill, at a low strength, with a brush a good deal wider than the dent. "
-        + "If the whole side waves, Flatten it first and then Fill what is left.",
+        + "If the whole side waves, Flatten it first and then Fill what is left.\n\n"
+        + "ONE point standing out of a smooth surface, the little tent a single pulled vertex makes, is a different thing "
+        + "again: that is FIX SPIKES, and it takes one click. Smooth will not do it, because a spike looks like a sharp "
+        + "edge and Smooth is built to keep those.",
     },
     {
       heading: "Sculpt mode: the brushes",
@@ -71,6 +74,7 @@ export const EDIT3D_HELP = {
         headers: ["Brush", "What it does", "Example"],
         rows: [
           ["Smooth", "Evens the surface out towards its neighbours, and stops at a crease, so a crisp edge beside the lumps survives. Ctrl sharpens instead.", "The stair steps and lumps on a curved AI surface."],
+          ["Fix spikes", "One click drops a point that stands out of a smooth surface back level with its neighbours. It only takes points that stand off on their own, so a real panel edge beside it survives. Click, do not drag.", "The little tent a single pulled vertex makes in a flat area."],
           ["Even out", "Slides the points sideways until they are evenly spaced, leaving the shape where it is. Every other brush behaves better afterwards.", "A patch of stretched, bunched triangles."],
           ["Flatten", "Presses everything under the brush onto one plane.", "A panel that should be flat but waves."],
           ["Scrape", "Shaves off only what sticks out above the average and leaves the dents alone. Ctrl does the opposite and raises the pits.", "Bumps and pimples on a flat panel."],
@@ -183,7 +187,7 @@ export const EDIT3D_HELP = {
         headers: ["Key", "Does"],
         rows: [
           ["B D L P I M E O", "In Polygons mode: Select, Deselect, Lasso, Panel, Piece, Move, Sharpen edge, Fill hole. Pressing one from another mode takes you there."],
-          ["S V T C A N R I B G P", "In Sculpt mode: Smooth, Even out, flaTten, sCrape, fill (A), piNch, cRease, Inflate, Build up, Grab, Protect. Each mode has its own letters, so the same key means the brush here and the tool there."],
+          ["S D V T C A N R I B G P", "In Sculpt mode: Smooth, Despike (fix spikes), Even out, flaTten, sCrape, fill (A), piNch, cRease, Inflate, Build up, Grab, Protect. Each mode has its own letters, so the same key means the brush here and the tool there."],
           ["1 / Ctrl+1", "Front / Back"],
           ["3 / Ctrl+3", "Right / Left"],
           ["7 / Ctrl+7", "Top / Bottom"],

@@ -48,7 +48,11 @@ export function installSculpt(ed) {
         pos: m.pos, ptN: m.ptN, fnUnit: m.fnUnit, adj: m.adj, idx: Int32Array.from(idx), w: Float32Array.from(w),
         k, invert, cx: c.x, cy: c.y, cz: c.z, radius: r, plane: ed.sculptPlane || null, scratch: grow,
       };
-      if (brush.apply(ctx)) for (const p of idx) touched.push(p);
+      const changed = brush.apply(ctx);
+      if (changed) {
+        if (stroke) stroke.changed += changed;
+        for (const p of idx) touched.push(p);
+      }
     }
     return touched;
   }
@@ -93,6 +97,14 @@ export function installSculpt(ed) {
     return true;
   }
 
+  /** What the History line says. `touched` is every point the brush LOOKED at, which is the honest number for a
+   *  brush that moves them all; Fix spikes looks at hundreds and changes four, so it reports what it CHANGED.
+   *  Takes the stroke, because finish() has already let go of it by the time it labels. */
+  function strokeLabel(brush, s) {
+    const n = brush.counts === "changed" ? s.changed : s.touched.size;
+    return `${brush.label} (${fmtInt(n)} point${n === 1 ? "" : "s"})`;
+  }
+
   /** Grab holds the points it caught at the press, with their weights, and moves them by the drag. A mirrored set
    *  flips its own axis so both sides pull outwards together. */
   function buildGrab(hit, lock) {
@@ -135,6 +147,7 @@ export function installSculpt(ed) {
     }
     m.refreshLocal(g.touched);
     for (const p of g.touched) stroke.touched.add(p);
+    stroke.changed = stroke.touched.size;
     stroke.moved = true;
     view.requestDraw();
     return true;
@@ -153,7 +166,7 @@ export function installSculpt(ed) {
     const lock = m.selectedCount() ? ed.prefs.lock : "off";
     const brush = brushById(ed.prefs.brushId);
     const paints = !!brush.paints;
-    stroke = { snap: paints ? null : m.snapshot("pos"), touched: new Set(), moved: false, last: hit.point.clone(), lock, grab: null };
+    stroke = { snap: paints ? null : m.snapshot("pos"), touched: new Set(), changed: 0, moved: false, last: hit.point.clone(), lock, grab: null };
     if (brush.grabs) {
       stroke.grab = buildGrab(hit, lock);
       if (!stroke.grab) { stroke = null; return; }
@@ -206,7 +219,7 @@ export function installSculpt(ed) {
     if (!s) return;
     if (!s.moved || !s.snap) return; // the Protect brush paints the picked area: nothing to undo
     const brush = brushById(ed.prefs.brushId);
-    ed.ops.commit(s.snap, `${brush.label} (${fmtInt(s.touched.size)} points)`, true);
+    ed.ops.commit(s.snap, strokeLabel(brush, s), true);
   }
 
   function onUp() { if (stroke) finish(); }

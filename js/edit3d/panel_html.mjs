@@ -25,6 +25,7 @@ export const ICONS = {
   inflate: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 5V2M12 22v-3M5 12H2M22 12h-3M7.5 7.5L5.5 5.5M18.5 18.5l-2-2M16.5 7.5l2-2M5.5 18.5l2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
   buildup: '<svg viewBox="0 0 24 24"><path d="M2 18c4 0 5-9 10-9s6 9 10 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   fill: '<svg viewBox="0 0 24 24"><path d="M3 9h7l2 5 2-5h7" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".55"/><path d="M2 15h20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M12 12v-4M10 10l2-2 2 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+  spike: '<svg viewBox="0 0 24 24"><path d="M3 16h6l3-11 3 11h6" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".5"/><path d="M2 16h20" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/><path d="M12 9V4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M10 6l2 3 2-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
   grab: '<svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
 };
 
