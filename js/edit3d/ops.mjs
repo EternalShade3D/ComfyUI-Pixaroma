@@ -44,10 +44,11 @@ export class Ops {
     this.render();
   }
 
-  /** Move: the points already moved during the drag. */
-  commit(snap, label) {
+  /** A drag that already moved the points (Move, a sculpt stroke). posOnly skips the census: the topology did not
+   *  change, and paying for an edge sort of the whole model at the end of every stroke is what makes it feel slow. */
+  commit(snap, label, posOnly = false) {
     this.push(snap, label);
-    this.ed.model.refreshGeometry();
+    this.ed.model.refreshGeometry(posOnly ? { posOnly: true } : undefined);
     this.ed.afterGeometry();
   }
 
@@ -58,6 +59,7 @@ export class Ops {
     if (ed.busy) { this.toast("Wait for the current job to finish, or press Stop.", 3000); return false; }
     if (ed.showingBefore) ed.setBeforeAfter("after");
     ed.tools?.cancel();
+    ed.sculpt?.cancel(); // a stroke still under the mouse lands as its own step first
     ed.busy = true;
     ed.ui.setBusy(busy || "Working...");
     await new Promise((r) => setTimeout(r, 30)); // so the line paints before a long edit
@@ -100,6 +102,7 @@ export class Ops {
     const entry = from.pop();
     if (!entry) { this.toast(`Nothing to ${word.toLowerCase()}.`, 2000); this.render(); return; }
     ed.tools?.cancel();
+    ed.sculpt?.cancel();
     const now = m.snapshot(entry.snap.kind);
     try {
       m.restore(entry.snap);

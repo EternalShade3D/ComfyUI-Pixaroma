@@ -3,7 +3,7 @@
 // the maths. Per-polygon alive and hidden flags, a per-point selection, and the GPU buffers (drawn unindexed, so each
 // corner can have its own normal and colour). Every tool edits `pos`, the same numbers the screen shows.
 import { weldIds, faceStarts, census } from "./topology.mjs";
-import { buildAdjacency, faceNormals, pointNormals, creasedCornerNormals } from "./geometry.mjs";
+import { buildAdjacency, faceNormals, pointNormals, creasedCornerNormals, COS_CREASE } from "./geometry.mjs";
 
 const SEL = [0.965, 0.404, 0.267];
 const BLUE = [0.18, 0.45, 0.9];
@@ -158,8 +158,11 @@ export class MeshModel {
     this.stats.hidden = hid;
   }
 
-  /** After positions or alive / hidden changed: normals, the drawn positions, the shading normals. */
-  refreshGeometry() {
+  /** After positions or alive / hidden changed: normals, the drawn positions, the shading normals.
+   *  `posOnly` says only POSITIONS moved, so the census (holes, broken edges, pieces) cannot have changed and the
+   *  edge sort that costs the most on a big model is not paid for. */
+  refreshGeometry(opts) {
+    const posOnly = !!(opts && opts.posOnly);
     this.computeVis();
     faceNormals(this.pos, this.cp, this.vis, this.fnRaw, this.fnUnit);
     this.writePositions();
@@ -168,8 +171,74 @@ export class MeshModel {
     pointNormals(this.P, this.cp, this.vis, this.fnRaw, this.ptN);
     this.bounds();
     this.gridDirty = true;
-    this.censusDirty = true;
+    if (!posOnly) this.censusDirty = true;
     this.wireDirty = true;
+  }
+
+  /**
+   * After a BRUSH moved `points`: the normals and the drawn positions of just the triangles around them. The full
+   * refresh walks every triangle in the model, which is fine once per edit and far too slow sixty times a second.
+   * Costs the brush's footprint, not the model: A are the triangles of the moved points, B the ring around them,
+   * whose corner normals average a neighbour that has changed.
+   */
+  refreshLocal(points) {
+    const { cp, vis, pos, fnRaw, fnUnit, ptN, T, P } = this;
+    const { pfOff, pf } = this.adj;
+    if (!this._mT || this._mT.length !== T || this._mP.length !== P) {
+      this._mT = new Int32Array(T);
+      this._mP = new Int32Array(P);
+      this._tick = 0;
+    }
+    const mT = this._mT, mP = this._mP;
+    const a1 = ++this._tick, triA = [];
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      for (let j = pfOff[p], e = pfOff[p + 1]; j < e; j++) { const t = pf[j]; if (mT[t] !== a1) { mT[t] = a1; triA.push(t); } }
+    }
+    for (const t of triA) {
+      const A = 3 * cp[3 * t], B = 3 * cp[3 * t + 1], C = 3 * cp[3 * t + 2];
+      const ux = pos[B] - pos[A], uy = pos[B + 1] - pos[A + 1], uz = pos[B + 2] - pos[A + 2];
+      const vx = pos[C] - pos[A], vy = pos[C + 1] - pos[A + 1], vz = pos[C + 2] - pos[A + 2];
+      let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      if (!vis[t]) { nx = 0; ny = 0; nz = 0; }
+      fnRaw[3 * t] = nx; fnRaw[3 * t + 1] = ny; fnRaw[3 * t + 2] = nz;
+      const l = Math.hypot(nx, ny, nz) || 1;
+      fnUnit[3 * t] = nx / l; fnUnit[3 * t + 1] = ny / l; fnUnit[3 * t + 2] = nz / l;
+    }
+    const a2 = ++this._tick, ptsB = [];
+    for (const t of triA) for (let k = 0; k < 3; k++) { const p = cp[3 * t + k]; if (mP[p] !== a2) { mP[p] = a2; ptsB.push(p); } }
+    for (const p of ptsB) {
+      let sx = 0, sy = 0, sz = 0;
+      for (let j = pfOff[p], e = pfOff[p + 1]; j < e; j++) {
+        const t = pf[j];
+        if (!vis[t]) continue;
+        sx += fnRaw[3 * t]; sy += fnRaw[3 * t + 1]; sz += fnRaw[3 * t + 2];
+      }
+      const l = Math.hypot(sx, sy, sz) || 1;
+      ptN[3 * p] = sx / l; ptN[3 * p + 1] = sy / l; ptN[3 * p + 2] = sz / l;
+    }
+    const a3 = ++this._tick, out = this.aNor.array;
+    for (const p of ptsB) {
+      for (let j = pfOff[p], e = pfOff[p + 1]; j < e; j++) {
+        const f = pf[j];
+        if (mT[f] === a3) continue;
+        mT[f] = a3;
+        const ux = fnUnit[3 * f], uy = fnUnit[3 * f + 1], uz = fnUnit[3 * f + 2];
+        for (let k = 0; k < 3; k++) {
+          const q = cp[3 * f + k];
+          let sx = 0, sy = 0, sz = 0;
+          for (let i2 = pfOff[q], e2 = pfOff[q + 1]; i2 < e2; i2++) {
+            const g = pf[i2];
+            if (!vis[g]) continue;
+            if (ux * fnUnit[3 * g] + uy * fnUnit[3 * g + 1] + uz * fnUnit[3 * g + 2] >= COS_CREASE) { sx += fnRaw[3 * g]; sy += fnRaw[3 * g + 1]; sz += fnRaw[3 * g + 2]; }
+          }
+          const l = Math.hypot(sx, sy, sz), o = 9 * f + 3 * k;
+          if (l < 1e-20) { out[o] = ux; out[o + 1] = uy; out[o + 2] = uz; } else { out[o] = sx / l; out[o + 1] = sy / l; out[o + 2] = sz / l; }
+        }
+      }
+    }
+    this.aNor.needsUpdate = true;
+    this.writePositionsAround(points);
   }
 
   /** A dead or hidden triangle collapses onto its first corner, so it draws nothing and cannot be picked. */

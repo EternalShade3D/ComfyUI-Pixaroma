@@ -4,6 +4,7 @@
 // Each panel carries data-mode with the modes it belongs to (space separated); a panel with no data-mode is in every
 // mode. The mode switch at the top of the left column shows one set at a time, so nothing a mode cannot do is ever
 // on screen. Panels are built ONCE and hidden, never rebuilt, so no listener can go stale.
+import { BRUSHES } from "./brushes.mjs";
 
 export const ICONS = {
   select: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>',
@@ -14,6 +15,10 @@ export const ICONS = {
   move: '<svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
   edge: '<svg viewBox="0 0 24 24"><path d="M3 19L12 6l9 13" fill="none" stroke="currentColor" stroke-width="2.3"/></svg>',
   hole: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle class="red" cx="12" cy="12" r="3.4" fill="none" stroke="#ff4d4d" stroke-width="2.2"/></svg>',
+  smooth: '<svg viewBox="0 0 24 24"><path d="M2 16c3 0 3-8 6-8s3 8 6 8 3-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  even: '<svg viewBox="0 0 24 24"><circle cx="4" cy="12" r="1.8" fill="currentColor"/><circle cx="10" cy="12" r="1.8" fill="currentColor"/><circle cx="16" cy="12" r="1.8" fill="currentColor"/><circle cx="21" cy="12" r="1.8" fill="currentColor"/><path d="M4 18h17" stroke="currentColor" stroke-width="1.4" opacity=".5"/></svg>',
+  flatten: '<svg viewBox="0 0 24 24"><path d="M3 9h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4 16c2-3 4 1 6-1s4 2 6-1 2 1 4 0" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".55"/></svg>',
+  scrape: '<svg viewBox="0 0 24 24"><path d="M3 15h7l2-5 2 5h7" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".55"/><path d="M2 9h20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
 };
 
 export const TOOLS = [
@@ -30,6 +35,7 @@ export const TOOLS = [
 /** The modes, in the order of the switch. Keep in step with MODES in core.mjs. */
 export const MODE_TABS = [
   ["model", "Whole model", "One press fixes the whole model: the skin hidden inside, holes, loose bits, quads, a printable solid. Nothing to pick first."],
+  ["sculpt", "Sculpt", "Brushes that shape the surface under your hand: Smooth, Even out, Flatten, Scrape. Hold Ctrl to reverse a brush."],
   ["polys", "Polygons", "Pick the exact faces you mean with the tools on the left, then fix only those."],
 ];
 
@@ -44,6 +50,11 @@ export const modesHtml = () => `<div class="pix-e3d-modes">${MODE_TABS.map(([v, 
 
 export function leftHtml() {
   return `
+<div class="pxf-panel" data-mode="sculpt"><div class="pxf-panel-title">Brushes</div><div class="pix-e3d-tools">
+${BRUSHES.map((b) => `<button type="button" class="pix-e3d-tool" data-brush="${b.id}" data-name="${b.label}" data-help="${b.help}">${ICONS[b.id] || ICONS.smooth}${b.label}</button>`).join("")}
+</div>
+<div class="pix-e3d-hint">Drag on the model to use the brush. Hold Ctrl to reverse it, the [ and ] keys change its size, and one drag is one step in the History.</div>
+</div>
 <div class="pxf-panel" data-mode="model"><div class="pxf-panel-title">Model check</div>
 <div class="pix-e3d-check" data-el="check"></div>
 <div class="pix-e3d-hint">A skin hidden inside cannot be counted, only seen: switch X-ray on, or just press Remove inside surfaces.</div>
@@ -73,6 +84,13 @@ ${sw("xray", "X-ray", "A see-through model, to spot surfaces hidden inside it. (
 export function rightHtml() {
   const wide = (attrs, text, help, badge = "") => `<button type="button" class="pxf-btn pix-e3d-wide" ${attrs} data-name="${text}" data-help="${help}">${text}${badge}</button>`;
   return `
+<div class="pxf-panel" data-mode="sculpt"><div class="pxf-panel-title">Brush settings</div>
+<div class="pix-e3d-brushname" data-el="brushName"></div>
+<div class="pix-e3d-slider" data-name="Strength" data-help="How hard the brush pulls. Each brush remembers its own: Smooth likes half, Flatten less. Several soft passes beat one hard one."><span>Strength</span><input type="range" min="5" max="100" step="5" data-brange="strength"><b data-out="strength"></b></div>
+${symRow()}
+<div class="pix-e3d-row pix-e3d-symrow" data-name="Lock" data-help="What the selection you made in Polygons mode means here. Protect leaves it alone, so you can smooth right up against a crisp edge without losing it. Only inside works nowhere else. With nothing selected this does nothing."><span>Lock</span>${seg("lock", [["off", "Off", "The brush works wherever you drag it."], ["protect", "Protect", "The selected points are never moved: the lock that lets you work against a good edge."], ["only", "Only inside", "Only the selected points move, whatever else is under the brush."]])}</div>
+<div class="pix-e3d-hint">Brushes move the points that are already there; they never add new ones. On a coarse patch press Quads in Whole model first, so there is something to shape.</div>
+</div>
 <div class="pxf-panel" data-mode="polys"><div class="pxf-panel-title">Fix the selection</div>
 ${wide('data-op="flatten"', "Flatten", "Moves the selected panel onto its best flat plane. Points facing another way are left alone, and the edge of the selection fades in. Example: Panel on a wavy car door, then Flatten.")}
 <div class="pix-e3d-slider" data-name="Flatten strength" data-help="How far the points move onto the plane: 100% is fully flat."><span>Strength</span><input type="range" min="10" max="100" step="5" data-range="flatStrength"><b data-out="flatStrength"></b></div>

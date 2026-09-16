@@ -1,6 +1,7 @@
 // Edit 3D Pixaroma - constants, the node's state (node.properties, Vue Compat #9), the last run, and where the
 // editor opens its model from. No DOM, no three.
 import { splitModelName, fmtInt } from "../load_3d/core.mjs";
+import { BRUSH_IDS } from "./brushes.mjs";
 
 export { splitModelName, fmtInt };
 export const CLASS = "PixaromaEdit3D";
@@ -20,8 +21,9 @@ export const NONE = "none";
 export const MAX_EDITS = 12;
 export const LOOKS = ["clay", "color", "wire", "normal"];
 export const SYM_AXES = ["off", "x", "y", "z"];
-// The editing modes, in the order of the switch at the top of the left column. "sculpt" joins them with the brushes.
-export const MODES = ["model", "polys"];
+// The editing modes, in the order of the switch at the top of the left column.
+export const MODES = ["model", "sculpt", "polys"];
+export const LOCKS = ["off", "protect", "only"];
 
 // The SAME rule as nodes/_edit3d_helpers.py EDITED_NAME.
 const EDITED_RE = /^edit3d_(?![A-Za-z0-9_-]*_work(?:_out)?\.)[A-Za-z0-9_-]{1,40}\.(obj|glb)$/;
@@ -29,12 +31,21 @@ const FILE_ID_RE = /^[a-z0-9]{12}$/;
 
 export const DEFAULT_PREFS = Object.freeze({
   look: "clay", symmetry: "off", through: false, brush: 0.03, xray: false, holes: false, mode: "model",
+  brushId: "smooth", strengths: {}, lock: "off",
 });
 export const DEFAULT_STATE = Object.freeze({
   edited: "", sourceKey: "", editCount: 0, edits: [], stamp: 0, fileId: "", prefs: DEFAULT_PREFS,
 });
 
 const num = (v, lo, hi, d) => (Number.isFinite(v) && v >= lo && v <= hi ? v : d);
+
+/** Each brush remembers its own strength: Smooth wants half, Flatten less. Unknown ids are dropped. */
+function sanitizeStrengths(raw) {
+  const s = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  for (const id of BRUSH_IDS) if (Number.isFinite(s[id])) out[id] = Math.min(1, Math.max(0.05, s[id]));
+  return out;
+}
 
 export function sanitizePrefs(raw) {
   const s = raw && typeof raw === "object" ? raw : {};
@@ -45,6 +56,9 @@ export function sanitizePrefs(raw) {
     // keeps its axis.
     symmetry: SYM_AXES.includes(s.symmetry) ? s.symmetry : SYM_AXES.includes(s.mirror) ? s.mirror : D.symmetry,
     mode: MODES.includes(s.mode) ? s.mode : D.mode,
+    brushId: BRUSH_IDS.includes(s.brushId) ? s.brushId : D.brushId,
+    lock: LOCKS.includes(s.lock) ? s.lock : D.lock,
+    strengths: sanitizeStrengths(s.strengths),
     through: typeof s.through === "boolean" ? s.through : D.through,
     brush: num(s.brush, 0.002, 0.3, D.brush),
     xray: typeof s.xray === "boolean" ? s.xray : D.xray,

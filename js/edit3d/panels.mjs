@@ -5,6 +5,7 @@
 // editor, and switching modes only shows and hides, so no listener can go stale.
 import { fmtInt, facesText } from "./core.mjs";
 import { leftHtml, rightHtml, modesHtml, seg } from "./panel_html.mjs";
+import { brushById } from "./brushes.mjs";
 
 export function buildPanels(ed) {
   const L = ed.layout;
@@ -45,7 +46,7 @@ export function buildPanels(ed) {
   const els = {
     selCount: q(L.leftSidebar, '[data-el="selCount"]'), check: q(L.leftSidebar, '[data-el="check"]'),
     holeBadge: q(scroll, '[data-el="holeBadge"]'), looseBadge: q(scroll, '[data-el="looseBadge"]'),
-    history: q(scroll, '[data-el="history"]'), name: q(scroll, '[data-el="name"]'),
+    history: q(scroll, '[data-el="history"]'), name: q(scroll, '[data-el="name"]'), brushName: q(scroll, '[data-el="brushName"]'),
     toast: toastEl, legend, job, jobMsg: job.querySelector(".msg"), jobStop: job.querySelector("button"), scroll,
   };
   els.name.value = ed.opts.name;
@@ -54,6 +55,7 @@ export function buildPanels(ed) {
   const all = (sel) => L.overlay.querySelectorAll(sel);
   for (const t of all("[data-mode-btn]")) t.addEventListener("click", () => ed.setMode(t.dataset.modeBtn));
   for (const t of all("[data-tool]")) t.addEventListener("click", () => ed.setTool(t.dataset.tool));
+  for (const t of all("[data-brush]")) t.addEventListener("click", () => ed.setBrush(t.dataset.brush));
   for (const t of all("[data-sel]")) t.addEventListener("click", () => ed.selection(t.dataset.sel));
   for (const t of all("[data-view]")) t.addEventListener("click", () => ed.setView(t.dataset.view));
   for (const t of all("[data-op]")) t.addEventListener("click", () => ed.ops?.[t.dataset.op]?.());
@@ -68,6 +70,7 @@ export function buildPanels(ed) {
   const SEGS = {
     look: [() => ed.prefs.look, (v) => ed.setLook(v)],
     sym: [() => ed.prefs.symmetry, (v) => ed.setSymmetry(v)],
+    lock: [() => ed.prefs.lock, (v) => { ed.prefs.lock = v; }],
     view: [() => (ed.showingBefore ? "before" : "after"), (v) => ed.setBeforeAfter(v)],
     cracks: [() => String(ed.opts.cracks), (v) => { ed.opts.cracks = Number(v); }],
     holeSize: [() => String(ed.opts.holeSize), (v) => { ed.opts.holeSize = Number(v); }],
@@ -102,6 +105,22 @@ export function buildPanels(ed) {
   for (const r of all("[data-switch]")) r.addEventListener("click", () => { SWITCHES[r.dataset.switch]?.[1](); syncSwitches(); });
   syncSwitches();
   els.name.addEventListener("input", () => { ed.opts.name = els.name.value; });
+
+  // The strength belongs to the BRUSH, not to the panel, so the slider is re-read whenever the brush changes.
+  const strengthRange = q(scroll, '[data-brange="strength"]'), strengthOut = q(scroll, '[data-out="strength"]');
+  const syncBrush = () => {
+    const b = brushById(ed.prefs.brushId);
+    els.brushName.textContent = b.label;
+    els.brushName.dataset.name = b.label;
+    els.brushName.dataset.help = b.help;
+    strengthRange.value = String(Math.round(ed.brushStrength() * 100));
+    strengthOut.textContent = strengthRange.value + "%";
+    for (const x of all("[data-brush]")) x.classList.toggle("active", x.dataset.brush === b.id);
+  };
+  strengthRange.addEventListener("input", () => {
+    ed.prefs.strengths[ed.prefs.brushId] = Number(strengthRange.value) / 100;
+    strengthOut.textContent = strengthRange.value + "%";
+  });
 
   // ── the line at the bottom left ──
   let helpShowing = false;
@@ -256,6 +275,7 @@ export function buildPanels(ed) {
       els.jobStop.onclick = null;
     },
     setToolActive(t) { for (const x of all("[data-tool]")) x.classList.toggle("active", x.dataset.tool === t); },
+    syncBrush,
     syncLook() { for (const s of all('[data-seg="look"], [data-seg="view"]')) syncSeg(s); },
     syncSegKey,
     syncSwitches,
@@ -290,6 +310,7 @@ export function buildPanels(ed) {
     ui.refreshInfo();
   });
   ui.renderHistory([], []);
+  syncBrush();
   ui.setMode(ed.prefs.mode);
   return ui;
 }
@@ -303,6 +324,23 @@ function renderOptions(ed, bar) {
   const hint = (s) => `<span class="pix-e3d-opt-hint">${s}</span>`;
   if (ed.prefs.mode === "model") {
     bar.innerHTML = hint("Whole model: the buttons on the right work on everything, so there is nothing to pick first. Model check on the left says what this model needs.");
+    return;
+  }
+  if (ed.prefs.mode === "sculpt") {
+    const b = brushById(ed.prefs.brushId);
+    bar.innerHTML = '<span class="pix-e3d-opt-label">Brush size</span><input type="range" data-opt="brush" min="0.004" max="0.15" step="0.001" data-name="Brush size" data-help="How wide the brush reaches, in millimetres on a 100 mm print. The [ and ] keys change it too.">'
+      + `<span class="pix-e3d-opt-val" data-out="brush"></span>${through}${sep}${hint(`${b.label}: drag on the model, hold Ctrl to reverse it.${sym}`)}`;
+    const r = bar.querySelector('[data-opt="brush"]'), out = bar.querySelector('[data-out="brush"]');
+    r.value = String(ed.prefs.brush);
+    const upd = () => { out.textContent = (ed.prefs.brush * 100).toFixed(1) + " mm"; };
+    r.addEventListener("input", () => { ed.prefs.brush = Number(r.value); upd(); });
+    upd();
+    for (const s of bar.querySelectorAll('[data-seg="through"]')) {
+      for (const x of s.querySelectorAll("button")) {
+        x.classList.toggle("on", x.dataset.v === (ed.prefs.through ? "1" : "0"));
+        x.addEventListener("click", () => { ed.prefs.through = x.dataset.v === "1"; renderOptions(ed, bar); });
+      }
+    }
     return;
   }
   if (t === "select" || t === "erase" || t === "move") {

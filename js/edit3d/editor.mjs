@@ -13,6 +13,8 @@ import { createView } from "./view.mjs";
 import { MeshModel, buildBeforeMesh } from "./mesh.mjs";
 import { buildPanels } from "./panels.mjs";
 import { installTools } from "./tools.mjs";
+import { installSculpt } from "./sculpt.mjs";
+import { brushById } from "./brushes.mjs";
 import { Ops } from "./ops.mjs";
 import { runHeavy, modelFile } from "./jobs.mjs";
 import { writeObj } from "./objio.mjs";
@@ -70,7 +72,8 @@ class Edit3DEditor {
     this.saving = false;
     this.loaded = false;
     this.closed = false;
-    this.layout = this.view = this.THREE = this.model = this.before = this.ui = this.ops = this.tools = null;
+    this.layout = this.view = this.THREE = this.model = this.before = this.ui = this.ops = this.tools = this.sculpt = null;
+    this.sculptPlane = null; // a plane picked with the Panel tool, which Flatten and Scrape then work against
     this.symC = [0, 0, 0]; // the symmetry plane: the middle of the model as it opened
     this.loadMsg = "Loading the model...";
     this.loadError = false;
@@ -82,6 +85,12 @@ class Edit3DEditor {
 
   isOpen() { return !this.closed && !!this.layout?.overlay?.isConnected; }
   brushRadius() { return this.prefs.brush * (this.model?.longest || 1); }
+  /** Each brush remembers its own strength, and falls back to the one it ships with. */
+  brushStrength() {
+    const b = brushById(this.prefs.brushId);
+    const v = this.prefs.strengths?.[b.id];
+    return Number.isFinite(v) ? v : b.strength;
+  }
 
   async open(src) {
     injectEditorCSS();
@@ -142,6 +151,7 @@ class Edit3DEditor {
       this.symC = this.model.center.slice();
       this.ops = new Ops(this);
       this.tools = installTools(this);
+      this.sculpt = installSculpt(this);
       this.loaded = true;
       this.applyLook();
       this.afterGeometry();
@@ -179,7 +189,10 @@ class Edit3DEditor {
     if (!m || !this.view) return;
     m.writeColours(this.prefs.look, true);
     if (this.prefs.look === "wire") m.ensureWire();
-    m.runCensus();
+    // Only when the topology can have changed. A stroke that just moved points leaves the counts alone, and the
+    // census is an edge sort over the whole model.
+    if (m.censusDirty) m.runCensus();
+    else if (this.prefs.holes || this.tool === "hole") m.updateMarkers();
     this.attach();
     if (m.wire) m.wire.visible = this.prefs.look === "wire" && !this.showingBefore;
     this.syncMarkers();
@@ -245,9 +258,19 @@ class Edit3DEditor {
     if (!MODES.includes(mode)) return;
     this.prefs.mode = mode;
     this.tools?.cancel();
+    this.sculpt?.cancel();
     this.hideRings();
     this.ui.setMode(mode);
     this.syncMarkers();
+  }
+
+  /** Picking a brush takes you to Sculpt mode, so it can never be pressed into nothing. */
+  setBrush(id) {
+    this.prefs.brushId = brushById(id).id;
+    if (this.prefs.mode !== "sculpt") this.setMode("sculpt");
+    this.sculpt?.cancel();
+    this.ui.syncBrush();
+    this.ui.renderOptions();
   }
 
   setSymmetry(v) {
@@ -281,6 +304,7 @@ class Edit3DEditor {
     const before = which === "before";
     if (before !== this.showingBefore) {
       this.tools?.cancel();
+      this.sculpt?.cancel();
       this.showingBefore = before;
       if (this.model) {
         this.model.mesh.visible = !before;
@@ -366,7 +390,7 @@ class Edit3DEditor {
     else if (k === "x") this.setXray(!this.prefs.xray);
     else if (k === "[" || k === "]") {
       this.prefs.brush = Math.min(0.15, Math.max(0.004, this.prefs.brush * (k === "]" ? 1.15 : 1 / 1.15)));
-      if (this.tool === "select" || this.tool === "erase" || this.tool === "move") this.ui.renderOptions();
+      if (this.prefs.mode === "sculpt" || this.tool === "select" || this.tool === "erase" || this.tool === "move") this.ui.renderOptions();
     } else return;
     e.preventDefault();
   }
@@ -496,11 +520,12 @@ class Edit3DEditor {
     this._undoGuardOff?.();
     this._undoGuardOff = null;
     try { this.tools?.dispose(); } catch (_e) { /* gone */ }
+    try { this.sculpt?.dispose(); } catch (_e) { /* gone */ }
     try { this.ui?.dispose(); } catch (_e) { /* gone */ }
     try { this.model?.dispose(); } catch (_e) { /* gone */ }
     try { this.before?.userData?.dispose?.(); } catch (_e) { /* gone */ }
     try { this.view?.dispose(); } catch (_e) { /* gone */ }
-    this.model = this.before = this.view = this.tools = null;
+    this.model = this.before = this.view = this.tools = this.sculpt = null;
     if (this.node._pixE3dEditor === this) this.node._pixE3dEditor = null;
     this.node.setDirtyCanvas?.(true, true);
   }

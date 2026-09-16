@@ -70,6 +70,8 @@ ${E} .pix-e3d-g3{grid-template-columns:repeat(3,1fr);}
 ${E} .pix-e3d-g4{grid-template-columns:repeat(4,1fr);}
 ${E} .pix-e3d-g2 .pxf-btn,${E} .pix-e3d-g3 .pxf-btn,${E} .pix-e3d-g4 .pxf-btn{padding:4px 0;font-size:11px;}
 ${E} .pix-e3d-count{font-size:11px;color:#bbb;margin-bottom:3px;}
+${E} .pix-e3d-brushname{font-size:12px;color:${A};margin-bottom:8px;}
+${E} .pix-e3d-ring.sculpt{border-color:#7ee07e;}
 ${E} .pix-e3d-hint{font-size:11px;color:#8d9296;line-height:1.45;margin-top:7px;}
 ${E} .pix-e3d-seg{display:flex;background:rgba(0,0,0,.25);border:1px solid #3a3d40;border-radius:5px;padding:2px;gap:2px;}
 ${E} .pix-e3d-seg button{flex:1;background:transparent;border:1px solid transparent;color:#aaa;font:11px "Segoe UI",system-ui,sans-serif;padding:4px 6px;border-radius:4px;cursor:pointer;transition:all .12s;white-space:nowrap;}
