@@ -19,6 +19,7 @@ export const ICONS = {
   even: '<svg viewBox="0 0 24 24"><circle cx="4" cy="12" r="1.8" fill="currentColor"/><circle cx="10" cy="12" r="1.8" fill="currentColor"/><circle cx="16" cy="12" r="1.8" fill="currentColor"/><circle cx="21" cy="12" r="1.8" fill="currentColor"/><path d="M4 18h17" stroke="currentColor" stroke-width="1.4" opacity=".5"/></svg>',
   flatten: '<svg viewBox="0 0 24 24"><path d="M3 9h18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4 16c2-3 4 1 6-1s4 2 6-1 2 1 4 0" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".55"/></svg>',
   scrape: '<svg viewBox="0 0 24 24"><path d="M3 15h7l2-5 2 5h7" fill="none" stroke="currentColor" stroke-width="1.7" opacity=".55"/><path d="M2 9h20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+  protect: '<svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>',
 };
 
 export const TOOLS = [
@@ -91,6 +92,7 @@ export function rightHtml() {
 ${symRow()}
 <div class="pix-e3d-row pix-e3d-symrow" data-name="Selection" data-help="What the area you picked in Polygons mode does to the brushes. Protected means the brush cannot move it; Only there means the brush moves nothing else."><span>Selection</span>${seg("lock", [["off", "Off", "The selection is ignored: the brush works wherever you drag it."], ["protect", "Protected", "The brush never moves the selected points. Select a crisp edge, then smooth right up against it without losing it."], ["only", "Only there", "The brush moves the selected points and nothing else, however big the brush is."]])}</div>
 <div class="pix-e3d-locknote" data-el="lockNote"></div>
+<div class="pix-e3d-g2">${b('data-sel="none"', "Clear", "Rubs out the whole painted area, so every brush can reach everywhere again. (Esc)")}${b('data-sel="invert"', "Invert", "Swaps it over: what was protected is free and what was free is protected.")}</div>
 <div class="pix-e3d-hint">Brushes move the points that are already there; they never add new ones. On a coarse patch press Quads in Whole model first, so there is something to shape.</div>
 </div>
 <div class="pxf-panel" data-mode="polys"><div class="pxf-panel-title">Fix the selection</div>

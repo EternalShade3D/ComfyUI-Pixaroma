@@ -75,6 +75,7 @@ ${E} .pix-e3d-ring.sculpt{border-color:#7ee07e;}
 /* The mirrored ring is deliberately a different COLOUR, not a fainter copy of the real one: it was reported as hard
    to tell apart. Declared LAST so it wins over every other ring look, and written with a CSS comment because a
    double slash inside this literal is not a comment at all, it is a selector that eats the rule after it. */
+${E} .pix-e3d-ring.mask{border-color:${A};border-width:2px;}
 ${E} .pix-e3d-ring.mirror{border-color:#6aa0ff;border-style:dashed;border-width:2px;opacity:.95;}
 ${E} .pix-e3d-hint{font-size:11px;color:#8d9296;line-height:1.45;margin-top:7px;}
 ${E} .pix-e3d-seg{display:flex;background:rgba(0,0,0,.25);border:1px solid #3a3d40;border-radius:5px;padding:2px;gap:2px;}

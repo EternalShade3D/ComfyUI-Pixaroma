@@ -204,5 +204,13 @@ export const BRUSHES = [
   },
 ];
 
+// Not a sculpting brush: it paints the PICKED AREA (the same points Polygons mode selects), so the protection can be
+// painted where it is needed without leaving Sculpt mode. `paints` tells sculpt.mjs to set the selection instead of
+// moving points, which also means no snapshot and no History line: picking is a way of working, not an edit.
+BRUSHES.push({
+  id: "protect", label: "Protect", apply: () => 0, strength: 1, paints: true,
+  help: "Paints the area the other brushes must leave alone, and Ctrl rubs it out again. Example: paint a crisp panel edge, then smooth the lumps right up against it without rounding it off. Clear and Invert are under the brush settings.",
+});
+
 export const brushById = (id) => BRUSHES.find((b) => b.id === id) || BRUSHES[0];
 export const BRUSH_IDS = BRUSHES.map((b) => b.id);

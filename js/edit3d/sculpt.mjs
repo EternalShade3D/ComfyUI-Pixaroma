@@ -53,7 +53,36 @@ export function installSculpt(ed) {
     return touched;
   }
 
+  /** The Protect brush paints the picked area instead of moving anything. -> the points it changed */
+  function paintSelection(point, remove) {
+    const m = ed.model, r = ed.brushRadius(), val = remove ? 0 : 1;
+    const touched = [];
+    for (const { c, cam } of P.centres(point)) {
+      m.pointsNear(c.x, c.y, c.z, r, (p) => {
+        if (m.sel[p] === val || !m.ptVis[p] || !P.facing(m, p, cam)) return;
+        m.sel[p] = val;
+        touched.push(p);
+      });
+    }
+    return touched;
+  }
+
   function paint(point, invert) {
+    const brush = brushById(ed.prefs.brushId);
+    if (brush.paints) {
+      const painted = paintSelection(point, invert);
+      if (!painted.length) return false;
+      ed.recolour();
+      ed.ui.refreshInfo();
+      // Painting protection that protects nothing would be a trap, so the first stroke switches Selection on.
+      if (!invert && ed.prefs.lock === "off") {
+        ed.prefs.lock = "protect";
+        ed.ui.syncSegKey("lock");
+        ed.ui.refreshInfo();
+        ed.ui.toast("What you paint is now protected: the other brushes will not move it. Change that under Selection.", 7000);
+      }
+      return true;
+    }
     const touched = stampAt(point, invert);
     if (!touched.length) return false;
     const m = ed.model;
@@ -75,7 +104,8 @@ export function installSculpt(ed) {
     m.ensureGrid(ed.brushRadius());
     // Reading the selection once per stroke, not once per stamp: selectedCount walks every point.
     const lock = m.selectedCount() ? ed.prefs.lock : "off";
-    stroke = { snap: m.snapshot("pos"), touched: new Set(), moved: false, last: hit.point.clone(), lock };
+    const paints = !!brushById(ed.prefs.brushId).paints;
+    stroke = { snap: paints ? null : m.snapshot("pos"), touched: new Set(), moved: false, last: hit.point.clone(), lock };
     lastEv = ev;
     P.capture(ev);
     paint(hit.point, ev.ctrlKey || ev.metaKey);
@@ -95,7 +125,7 @@ export function installSculpt(ed) {
     const hit = P.hitAt(ev.clientX, ev.clientY);
     if (!hit) { P.hideRings(); return; }
     const r = ed.brushRadius(), invert = ev.ctrlKey || ev.metaKey;
-    P.drawRing(ev, hit.point, r, invert ? " remove" : " sculpt");
+    P.drawRing(ev, hit.point, r, brushById(ed.prefs.brushId).paints ? (invert ? " remove" : " mask") : invert ? " remove" : " sculpt");
     if (!stroke) return;
     // Stamped along the way, so a fast drag is one stroke and not a row of dabs.
     const d = stroke.last.distanceTo(hit.point), stepLen = r * SPACING;
@@ -111,7 +141,7 @@ export function installSculpt(ed) {
     const s = stroke;
     stroke = null;
     if (!s) return;
-    if (!s.moved) return;
+    if (!s.moved || !s.snap) return; // the Protect brush paints the picked area: nothing to undo
     const brush = brushById(ed.prefs.brushId);
     ed.ops.commit(s.snap, `${brush.label} (${fmtInt(s.touched.size)} points)`, true);
   }

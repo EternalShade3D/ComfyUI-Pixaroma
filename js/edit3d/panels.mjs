@@ -115,6 +115,8 @@ export function buildPanels(ed) {
     els.brushName.textContent = b.label;
     els.brushName.dataset.name = b.label;
     els.brushName.dataset.help = b.help;
+    // Strength means nothing to the Protect brush, and a control that does nothing is worse than no control.
+    strengthRange.closest(".pix-e3d-slider").style.display = b.paints ? "none" : "";
     strengthRange.value = String(Math.round(ed.brushStrength() * 100));
     strengthOut.textContent = strengthRange.value + "%";
     for (const x of all("[data-brush]")) x.classList.toggle("active", x.dataset.brush === b.id);
@@ -168,7 +170,7 @@ export function buildPanels(ed) {
         // What the Selection setting will actually DO right now, in numbers. The three words on their own were not
         // enough: they were reported as not understood, and a control nobody can read is a broken control.
         els.lockNote.textContent = !n
-          ? "Nothing is selected, so this does nothing yet. Pick an area in Polygons mode first."
+          ? "Nothing is painted yet, so this does nothing. Use the Protect brush, or pick an area in Polygons mode."
           : ed.prefs.lock === "protect" ? `The ${fmtInt(n)} selected points will not move.`
             : ed.prefs.lock === "only" ? `Only those ${fmtInt(n)} points can move.`
               : `${fmtInt(n)} points are selected, and the brushes are ignoring them.`;
