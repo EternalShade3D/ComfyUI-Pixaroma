@@ -686,18 +686,24 @@ export class MeshModel {
     }
     // A new point takes the colour and uv of the loop it closes (the average of the corners it is fanned from).
     const newCol = this.colours ? new Float32Array(3 * k) : null, newUv = ptUv ? new Float32Array(2 * k) : null, used = new Int32Array(k);
+    // EVERY new corner of a face, not just the last one found. The old loop kept a single `centre`, which is right
+    // for a fan (one new point per triangle) and silently wrong for any fill that adds more than one: a new point
+    // that is never the last on any of its faces ends with used = 0, keeps the colour zero it was allocated with,
+    // and renders as a BLACK DOT on a vertex-coloured model. With exactly one new point per face this is
+    // byte-identical to what it did before, so nothing that fills today can change behaviour.
     let o = 0;
     for (let f = 0; f < addCounts.length; f++) {
       const n = addCounts[f];
-      let centre = -1;
-      for (let j = 0; j < n; j++) if (addIdx[o + j] >= P0) centre = addIdx[o + j] - P0;
-      if (centre >= 0) {
-        for (let j = 0; j < n; j++) {
-          const p = addIdx[o + j];
-          if (p >= P0) continue;
-          used[centre]++;
-          if (newCol) for (let c = 0; c < 3; c++) newCol[3 * centre + c] += this.colours[3 * p + c];
-          if (newUv) for (let c = 0; c < 2; c++) newUv[2 * centre + c] += ptUv[2 * p + c];
+      for (let j = 0; j < n; j++) {
+        const q = addIdx[o + j];
+        if (q < P0) continue;
+        const nw = q - P0;
+        for (let i = 0; i < n; i++) {
+          const p = addIdx[o + i];
+          if (p >= P0) continue; // an old corner: the only one carrying a colour to borrow
+          used[nw]++;
+          if (newCol) for (let c = 0; c < 3; c++) newCol[3 * nw + c] += this.colours[3 * p + c];
+          if (newUv) for (let c = 0; c < 2; c++) newUv[2 * nw + c] += ptUv[2 * p + c];
         }
       }
       o += n;
