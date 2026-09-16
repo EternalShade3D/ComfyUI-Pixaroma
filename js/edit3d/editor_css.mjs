@@ -94,7 +94,22 @@ ${E} .pix-e3d-slider input{flex:1;min-width:0;accent-color:${A};}
 ${E} .pix-e3d-slider b{width:38px;text-align:right;color:#ccc;font-weight:400;font-family:Consolas,monospace;font-size:10.5px;}
 ${E} .pix-e3d-wide{width:100%;justify-content:space-between;margin-bottom:6px;}
 ${E} .pix-e3d-under{margin:-1px 0 10px;}
-${E} .pix-e3d-badge{font-size:10px;color:#9aa3aa;background:#1c1e1f;border:1px solid #3a3d40;border-radius:10px;padding:0 7px;line-height:16px;}
+/* A settings row BELONGS to the button above it, and must not read as more buttons. The button already has no
+   bottom gap (.pix-e3d-wide margin-bottom 6px is cancelled here), the row is indented under it and carries a name
+   on the left, and a left rule runs down the pair so the eye groups them. Reported as "buttons that look like it
+   doesnt do nothing": five chips styled like actions, joined to their owner by nothing but a -1px margin. */
+${E} .pix-e3d-wide.pix-e3d-owner{margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;}
+${E} .pix-e3d-setrow{margin:0 0 10px;padding:5px 6px 5px 8px;background:rgba(0,0,0,.14);border:1px solid #2a2c2f;border-top:none;border-radius:0 0 5px 5px;gap:8px;}
+${E} .pix-e3d-setrow > span:first-child{width:auto;min-width:42px;flex:0 0 auto;color:#8d9296;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;}
+${E} .pix-e3d-setrow .pix-e3d-seg{flex:1;background:transparent;border:none;padding:0;}
+${E} .pix-e3d-setrow .pix-e3d-seg button{padding:3px 4px;}
+${E} .pix-e3d-btnval{font-size:10px;color:${A};background:rgba(0,0,0,.28);border:1px solid #3a3d40;border-radius:10px;padding:0 8px;line-height:16px;font-family:Consolas,monospace;}
+${E} .pxf-btn:hover .pix-e3d-btnval{color:#fff;border-color:rgba(255,255,255,.5);}
+/* margin-left:auto keeps a badge and a value TOGETHER at the right edge. The button is a flex row set to
+   space-between, so with three children (name, badge, value) the badge would otherwise be stranded in the middle
+   of the button. An auto margin eats the free space before space-between runs. Fill holes is the only button
+   carrying both; on a badge-only button this lands it exactly where space-between already put it. */
+${E} .pix-e3d-badge{margin-left:auto;font-size:10px;color:#9aa3aa;background:#1c1e1f;border:1px solid #3a3d40;border-radius:10px;padding:0 7px;line-height:16px;}
 ${E} .pxf-btn:hover .pix-e3d-badge{color:#fff;border-color:rgba(255,255,255,.5);background:rgba(0,0,0,.25);}
 ${E} .pxf-top-options{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;min-height:36px;padding:4px 10px;box-sizing:border-box;}
 ${E} .pxf-top-options input[type=range]{width:130px;accent-color:${A};}

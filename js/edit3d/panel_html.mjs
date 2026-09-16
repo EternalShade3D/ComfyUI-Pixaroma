@@ -51,6 +51,16 @@ export const MODE_TABS = [
 
 export const b = (attrs, text, help, name) => `<button type="button" class="pxf-btn" ${attrs}${name ? ` data-name="${name}"` : ""} data-help="${help}">${text}</button>`;
 export const seg = (key, items, cls = "") => `<div class="pix-e3d-seg${cls}" data-seg="${key}">${items.map(([v, t, h]) => `<button type="button" data-v="${v}" data-help="${h}">${t}</button>`).join("")}</div>`;
+
+/**
+ * A settings row that BELONGS to the button above it. Reported 2026-09-16: "buttons that look like it doesnt do
+ * nothing so is not intuitiive" - and they were right, because the only thing joining a chip row to its button was
+ * `.pix-e3d-under`'s -1px margin, while the chips are styled exactly like real buttons. Five chips therefore read as
+ * five actions, and clicking one appears to do nothing.
+ * A NAME on the left says "this is a setting", which is the same shape the Symmetry and Format rows already use.
+ */
+export const setRow = (label, key, items) =>
+  `<div class="pix-e3d-row pix-e3d-setrow"><span>${label}</span>${seg(key, items)}</div>`;
 export const sw = (key, text, help) => `<div class="pix-e3d-sw-row" data-switch="${key}" data-name="${text}" data-help="${help}"><span>${text}</span><span class="pix-e3d-sw"></span></div>`;
 
 /** The Symmetry row: the SAME setting wherever it appears, so the two copies can never disagree. */
@@ -93,7 +103,10 @@ ${sw("xray", "X-ray", "A see-through model, to spot surfaces hidden inside it. (
 }
 
 export function rightHtml() {
-  const wide = (attrs, text, help, badge = "") => `<button type="button" class="pxf-btn pix-e3d-wide" ${attrs} data-name="${text}" data-help="${help}">${text}${badge}</button>`;
+  // `owns` is the key of the settings row underneath: the button then joins to it as one box (square bottom, no
+  // gap) and carries the chosen value on its right, so pressing it says what it will do and clicking a chip is
+  // visibly answered. A button with NO row below must not pass it, or it renders with a cut-off bottom edge.
+  const wide = (attrs, text, help, badge = "", owns = "") => `<button type="button" class="pxf-btn pix-e3d-wide${owns ? " pix-e3d-owner" : ""}" ${attrs} data-name="${text}" data-help="${help}">${text}${badge}${owns ? `<span class="pix-e3d-btnval" data-btnval="${owns}"></span>` : ""}</button>`;
   return `
 <div class="pxf-panel" data-mode="sculpt"><div class="pxf-panel-title">Brush settings</div>
 <div class="pix-e3d-brushname" data-el="brushName"></div>
@@ -119,19 +132,19 @@ ${wide('data-op="sharpen"', "Sharpen edges", "With two panels picked by the Shar
 ${wide('data-op="quickClean"', "Quick clean up", "The three fixes every AI model needs, in order and in one press: Remove inside surfaces, Fill holes at Small, Remove loose bits. It counts as one step, so one Undo takes all three back. Cutting the skin away from inside opens the seam where the two skins met, so it says how many bigger holes are left and what to press next. Example: the first thing to press on a fresh Pixal3D or Trellis 2 model.")}
 <div class="pix-e3d-hint pix-e3d-under">Or press them one at a time:</div>
 ${wide('data-op="removeInside"', "Remove inside surfaces", "Removes every face that can never be seen from outside: the second skin AI models carry inside. Often more than half the model.")}
-${wide('data-op="fillHoles"', "Fill holes", "Closes the holes whose rim is no longer than the size chosen below, and fills again while it keeps finding them. Any size closes every hole the editor can walk around; a big one gets a flat cap, so look at it afterwards. Example: after Remove inside surfaces, at Small.", '<span class="pix-e3d-badge" data-el="holeBadge"></span>')}
-${seg("holeSize", [["16", "Small", "Rims of up to 16 edges: pinholes and the specks left where the inside skin was cut away."], ["60", "Medium", "Rims of up to 60 edges: the openings a cleaned AI model usually has left."], ["100000", "Any size", "Every hole the editor can walk around. A big opening is closed with a flat cap, so check it afterwards."]], " pix-e3d-under")}
+${wide('data-op="fillHoles"', "Fill holes", "Closes the holes whose rim is no longer than the size chosen below, and fills again while it keeps finding them. Any size closes every hole the editor can walk around; a big one gets a flat cap, so look at it afterwards. Example: after Remove inside surfaces, at Small.", '<span class="pix-e3d-badge" data-el="holeBadge"></span>', "holeSize")}
+${setRow("Size", "holeSize", [["16", "Small", "Rims of up to 16 edges: pinholes and the specks left where the inside skin was cut away."], ["60", "Medium", "Rims of up to 60 edges: the openings a cleaned AI model usually has left."], ["100000", "Any size", "Every hole the editor can walk around. A big opening is closed with a flat cap, so check it afterwards."]])}
 ${wide('data-op="removeLoose"', "Remove loose bits", "Removes the separate pieces smaller than 8 faces: the specks AI models scatter around.", '<span class="pix-e3d-badge" data-el="looseBadge"></span>')}
-${wide('data-op="closeCracks"', "Close cracks", "Joins open edges that almost touch, then closes the small gaps left. Example: a model spliced from several views, at 0.25%.")}
-${seg("cracks", [["0.1", "0.1%", "Joins edges closer than 0.1% of the model's size: only hairline cracks."], ["0.25", "0.25%", "Joins edges closer than 0.25% of the model's size."], ["0.5", "0.5%", "Joins edges closer than 0.5% of the model's size."], ["1", "1%", "Joins edges closer than 1% of the model's size: wide cracks, but small details can fuse."]], " pix-e3d-under")}
-${wide('data-heavy="quads"', "Quads", "Lays a clean grid of quads over the whole model, following its crisp edges. Example: before sending a model to Blender or a game engine.")}
-${seg("quads", [["10000", "10K", "10,000 quads: very light, for a game or a web viewer. This is also the way to make a QUAD model lighter, since Reduce polygons turns it into triangles."], ["25000", "25K", "25,000 quads: light, and still holds the big shapes."], ["50000", "50K", "50,000 quads: light, for games."], ["100000", "100K", "100,000 quads: about half the time of 200K."], ["200000", "200K", "200,000 quads: keeps slots, panel lines and small round details."]], " pix-e3d-under")}
-${wide('data-heavy="reduce"', "Reduce polygons", "Removes faces while keeping the shape, and the model comes back as TRIANGLES: it is the same kind of decimation Blender does, and it holds the original shape better than rebuilding it. To make a QUAD model lighter and keep the quads, press Quads at a lower number instead. Example: a 1.5 million triangle model for a web viewer, at -75%.")}
-${seg("reduce", [["25", "-25%", "Keeps three quarters of the triangles."], ["50", "-50%", "Keeps half of the triangles."], ["75", "-75%", "Keeps a quarter of the triangles."]], " pix-e3d-under")}
-${wide('data-heavy="solid"', "Make solid", "Rebuilds the model as one closed solid for 3D printing. It softens small details, so use it last. More detail keeps more of the shape and takes longer.")}
-${seg("solid", [["256", "256", "Fastest, softest."], ["384", "384", "The usual choice."], ["512", "512", "The most detail, the slowest."]], " pix-e3d-under")}
-${wide('data-heavy="mirror"', "Make both sides match", "Throws one side away and copies the other over it, so the two halves are exactly the same. This is not the Symmetry switch: this one rebuilds the model. Example: a character whose left arm came out better.")}
-<div class="pix-e3d-row pix-e3d-under">${seg("mirrorAxis", [["x", "X", "Match left and right."], ["y", "Y", "Match top and bottom."], ["z", "Z", "Match front and back."]])}${seg("mirrorSide", [["positive", "Keep +", "Keeps the side on the plus end of the axis."], ["negative", "Keep -", "Keeps the side on the minus end of the axis."]])}</div>
+${wide('data-op="closeCracks"', "Close cracks", "Joins open edges that almost touch, then closes the small gaps left. Example: a model spliced from several views, at 0.25%.", "", "cracks")}
+${setRow("Gap", "cracks", [["0.1", "0.1%", "Joins edges closer than 0.1% of the model's size: only hairline cracks."], ["0.25", "0.25%", "Joins edges closer than 0.25% of the model's size."], ["0.5", "0.5%", "Joins edges closer than 0.5% of the model's size."], ["1", "1%", "Joins edges closer than 1% of the model's size: wide cracks, but small details can fuse."]])}
+${wide('data-heavy="quads"', "Quads", "Lays a clean grid of quads over the whole model, following its crisp edges. Example: before sending a model to Blender or a game engine.", "", "quads")}
+${setRow("Count", "quads", [["10000", "10K", "10,000 quads: very light, for a game or a web viewer. This is also the way to make a QUAD model lighter, since Reduce polygons turns it into triangles."], ["25000", "25K", "25,000 quads: light, and still holds the big shapes."], ["50000", "50K", "50,000 quads: light, for games."], ["100000", "100K", "100,000 quads: about half the time of 200K."], ["200000", "200K", "200,000 quads: keeps slots, panel lines and small round details."]])}
+${wide('data-heavy="reduce"', "Reduce polygons", "Removes faces while keeping the shape, and the model comes back as TRIANGLES: it is the same kind of decimation Blender does, and it holds the original shape better than rebuilding it. To make a QUAD model lighter and keep the quads, press Quads at a lower number instead. Example: a 1.5 million triangle model for a web viewer, at -75%.", "", "reduce")}
+${setRow("Amount", "reduce", [["25", "-25%", "Keeps three quarters of the triangles."], ["50", "-50%", "Keeps half of the triangles."], ["75", "-75%", "Keeps a quarter of the triangles."]])}
+${wide('data-heavy="solid"', "Make solid", "Rebuilds the model as one closed solid for 3D printing. It softens small details, so use it last. More detail keeps more of the shape and takes longer.", "", "solid")}
+${setRow("Detail", "solid", [["256", "256", "Fastest, softest."], ["384", "384", "The usual choice."], ["512", "512", "The most detail, the slowest."]])}
+${wide('data-heavy="mirror"', "Make both sides match", "Throws one side away and copies the other over it, so the two halves are exactly the same. This is not the Symmetry switch: this one rebuilds the model. Example: a character whose left arm came out better.", "", "mirrorAxis")}
+<div class="pix-e3d-row pix-e3d-setrow"><span>Axis</span>${seg("mirrorAxis", [["x", "X", "Match left and right."], ["y", "Y", "Match top and bottom."], ["z", "Z", "Match front and back."]])}${seg("mirrorSide", [["positive", "Keep +", "Keeps the side on the plus end of the axis."], ["negative", "Keep -", "Keeps the side on the minus end of the axis."]])}</div>
 </div>
 <div class="pxf-panel"><div class="pxf-panel-title">Save to Disk as</div>
 <div class="pix-e3d-row"><span>Format</span>${seg("fmt", [["auto", "Auto", "OBJ, or GLB when the model keeps a texture."], ["obj", "OBJ", "Keeps quads and colours."], ["glb", "GLB", "Keeps colours and a texture."], ["stl", "STL", "For 3D printing: standing on Z, 100 mm on its longest side."]])}</div>

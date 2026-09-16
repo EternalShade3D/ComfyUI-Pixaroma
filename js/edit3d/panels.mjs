@@ -84,8 +84,16 @@ export function buildPanels(ed) {
     turnY: [() => String(ed.opts.turnY), (v) => { ed.opts.turnY = Number(v); }],
   };
   const syncSeg = (s) => {
-    const cur = SEGS[s.dataset.seg]?.[0]();
-    for (const x of s.querySelectorAll("button")) x.classList.toggle("on", x.dataset.v === cur);
+    const key = s.dataset.seg, cur = SEGS[key]?.[0]();
+    let label = "";
+    for (const x of s.querySelectorAll("button")) {
+      const on = x.dataset.v === cur;
+      x.classList.toggle("on", on);
+      if (on) label = x.textContent.trim();
+    }
+    // The owning button shows the chosen value, so pressing it says what it will do and a chip click is visibly
+    // answered. Written HERE rather than from a list of its own, so the badge can never drift from the chips.
+    for (const v of all(`[data-btnval="${key}"]`)) v.textContent = label;
   };
   // A setting can appear in more than one panel (Symmetry does), so every copy is synced, never just the one clicked.
   const syncSegKey = (key) => { for (const s of all(`[data-seg="${key}"]`)) syncSeg(s); };
