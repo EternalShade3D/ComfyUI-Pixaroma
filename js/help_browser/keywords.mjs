@@ -109,6 +109,7 @@ export const KEYWORDS = {
   PixaromaImageResize: "alpha transparency transparent background removed rmbg cutout "
     + "png black background lost preserve keep join image with alpha mask channel rgba",
   PixaromaLoraLoader: "lora stack weight trigger civitai xy plot compare grid sweep "
+    + "moved move folder subfolder lost trigger words red name "
     + "api key token login account not found missing nsfw adult uncensored mature "
     + "civitai.red unrestricted thumbnail preview blocked hidden "
     + "own picture custom image replace cover photo change thumbnail drag drop paste "

@@ -323,6 +323,17 @@ registerNodeHelp(CLASS, {
         "switched on for you. The small x on a word forgets it for that LoRA everywhere.",
     },
     {
+      heading: "If you move a LoRA to another folder",
+      body:
+        "The row still points at the old place, so its name shows in red. Click the name and pick the " +
+        "LoRA from its new folder: the words you ticked and typed on that row come along, and your typed " +
+        "words are remembered under the new place the next time you open its panel.\n\n" +
+        "Words saved from Civitai live in a small .civitai.info file next to the LoRA, so move that file " +
+        "with it, or press the Civitai button in the panel once to look them up again. Your own picture " +
+        "stays with the old place, so set it again. Switching a row to a different LoRA still starts " +
+        "fresh, even when the two files share a name.",
+    },
+    {
       heading: "Use your own picture",
       body:
         "The little picture at the top left of the info panel is the LoRA's preview. Click it to " +

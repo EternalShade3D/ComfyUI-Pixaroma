@@ -8,6 +8,7 @@ import {
   setAllOn, countOn, accentOf, MAX_LORAS,
 } from "./core.mjs";
 import { openLoraDropdown } from "./dropdown.mjs";
+import { hasLora } from "./api.mjs";
 import { openInfoPanel, autoTickAfterPick } from "./info_panel.mjs";
 import { openLoraPanel } from "./settings.mjs";
 
@@ -200,13 +201,38 @@ export function attachInteractions(node, widgetEl, refresh) {
   });
 }
 
+// A LoRA MOVED to another folder is the same LoRA, not a new one. Picking it from
+// its new place on the row that still points at the old place must keep the words
+// the user picked and typed there (reported 2026-09-15). It is a move only when the
+// FILE NAME matches AND the old file is really gone from the list: this install has
+// ernie\pixabunny26 and krea2\pixabunny26, two different LoRAs sharing a file name,
+// and swapping between those must still clear (patchLora's rule, pattern #12).
+// hasLora() is null while the list is unknown, which counts as "not a move".
+function isMovedLora(oldName, newName) {
+  if (!oldName || !newName || oldName === newName) return false;
+  const fileOf = (n) => String(n).replace(/\\/g, "/").split("/").pop().toLowerCase();
+  if (fileOf(oldName) !== fileOf(newName)) return false;
+  return hasLora(oldName) === false;
+}
+
 function openNamePicker(node, id, anchorEl, refresh) {
   const e = readState(node).loras.find((x) => x.id === id);
   openLoraDropdown(anchorEl, {
     current: e?.name || "",
     accent: accentOf(node),
     onPick: (name) => {
+      // Read the row NOW, not the `e` captured when the picker opened: the picker
+      // stays open while other things can change the row.
+      const row = readState(node).loras.find((x) => x.id === id);
+      const carry = row && isMovedLora(row.name, name)
+        ? { triggers: [...(row.triggers || [])], custom: [...(row.custom || [])], at: !!row.at }
+        : null;
       patchLora(node, id, { name });
+      // patchLora clears the words on ANY name change; for a moved file put them
+      // back in a second patch that does not touch the name. The typed words then
+      // reach the per-file store under the NEW name the next time the info panel
+      // opens (hydrateCustom pushes row words the store lacks).
+      if (carry) patchLora(node, id, carry);
       refresh(false);
       // Tick this LoRA's own trigger words straight away, so a LoRA that needs
       // one works without having to open the info panel and find it. Async and
