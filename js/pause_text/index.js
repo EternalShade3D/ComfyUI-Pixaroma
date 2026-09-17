@@ -6,6 +6,7 @@ import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { installNativeTextMenu } from "../shared/native_text_menu.mjs";
 import { installNodeAccent, registerNodeAccent } from "../shared/node_settings.mjs";
 import { rollNodeSeed } from "../shared/seed_roll.mjs";
+import { isLightTheme } from "../shared/light_theme.mjs";
 import {
   getState, setGate, setText, setModelText, revertText, STATE_PROP,
 } from "./state.mjs";
@@ -47,7 +48,9 @@ function paintStatus(node, ctx) {
   const avail = node.size[0] - CLASSIC_STATUS_RSV * 2;
   if (avail < 24) return;                       // too narrow to show anything
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  // A canvas cannot read the light-theme stylesheet, so pick the colour here:
+  // light text vanished on the light node body of ComfyUI's light palette.
+  ctx.fillStyle = isLightTheme() ? "rgba(0,0,0,0.66)" : "rgba(255,255,255,0.72)";
   ctx.font = "11px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";

@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { installPixaromaChangeNet } from "../shared/graph_changed.mjs";
 import { installBypassRepair } from "../shared/bypass_repair.mjs";
+import { installTextNodesLightTheme } from "../shared/light_theme.mjs";
 
 // ── Pixaroma brand defaults ──────────────────────────────────────────────
 // Single source of truth for the dark brand colors that every Pixaroma node
@@ -34,6 +35,11 @@ installPixaromaChangeNet();
 // because core picks the bypassed node's input by INDEX when the consumer is "*".
 // Installed here because brand/ is the one extension that always loads.
 installBypassRepair();
+
+// ComfyUI's light colour palettes: readable text boxes and visible buttons on the
+// prompt-typing nodes, which were designed dark. One stylesheet, inert while a
+// dark palette is active. Installed here for the same "always loaded" reason.
+installTextNodesLightTheme();
 
 app.registerExtension({
   name: "Pixaroma.BrandDefaults",
