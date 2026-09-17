@@ -392,7 +392,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 17, 2026 · v1.4.152**
+### **September 17, 2026 · v1.4.152–v1.4.153**
+- **Fixed: middle-mouse drag did not move the canvas over a node's picture or text box.** Now it does, over 3D views too.
+- **Fixed: LoRA Loader forgot your trigger words when a LoRA was moved to another folder.** Pick the moved file again and they come back.
+- **Fixed: Ctrl+Up / Ctrl+Down did not change a word's weight** in Pixaroma prompt boxes.
+- **Fixed: in ComfyUI's light theme, the prompt and text nodes had invisible buttons and black text boxes.**
 - **Fixed: Save 3D views could stay on "Loading ..." until a page refresh**, after a Load 3D node had been open.
 - **Fixed: a Save 3D node could show the model from another workflow.** Each workflow now keeps its own preview.
 - **If the browser stops drawing 3D views, Load 3D and Save 3D now say so** and try again on their own, instead of staying dark.
