@@ -17,8 +17,12 @@ DEFAULT_NAME = "3d/pixaroma"
 
 DEFAULT_STATE = {
     "mode": "preview", "turns": [], "center": True, "ground": True, "format": "auto",
-    "name": DEFAULT_NAME, "up": "auto", "stlSize": 100, "folder": "",
+    "name": DEFAULT_NAME, "up": "auto", "stlSize": 100, "folder": "", "wf": "",
 }
+# The workflow key the browser adds at Run (a hash of the workflow's path), so two workflows that
+# use the same node id keep their own preview file. It becomes part of a file name, so nothing but
+# this exact shape is accepted.
+_WF_KEY = re.compile(r"[0-9a-f]{8}")
 
 _BAD_CHARS = re.compile(r'[<>:"|?*\x00-\x1f]')
 # Save Image's %date:yyyy-MM-dd% token. It holds a colon (and may hold a slash),
@@ -106,6 +110,9 @@ def parse_state(raw):
         # Kept as typed (quotes, ~ and variables included): node_save_3d screens,
         # resolves and approves it with Save Image's rules before any use.
         state["folder"] = folder.strip()[:FOLDER_MAX]
+    wf = data.get("wf")
+    if isinstance(wf, str) and _WF_KEY.fullmatch(wf):
+        state["wf"] = wf
     return state
 
 

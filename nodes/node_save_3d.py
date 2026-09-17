@@ -44,7 +44,8 @@ UI_KEY = "pixaroma_save3d"
 PREVIEW_SUBFOLDER = "pixaroma_save3d"
 WHO = "Save 3D Pixaroma"
 # The only files Save now may copy: ones this node wrote into its temp folder.
-SOURCE_NAME = re.compile(r"^save3d_[A-Za-z0-9_-]{1,40}\.(obj|glb|stl)$")
+# 60, not 40: a preview may carry the 8-character workflow key and "_view" ahead of a 40-character id.
+SOURCE_NAME = re.compile(r"^save3d_[A-Za-z0-9_-]{1,60}\.(obj|glb|stl)$")
 
 NOTHING_WIRED = (
     "Save 3D Pixaroma has nothing to save. Wire a mesh, or a model_3d from Load 3D Pixaroma "
@@ -100,8 +101,15 @@ def _write_temp(data, name):
     return {"filename": name, "subfolder": PREVIEW_SUBFOLDER, "type": "temp"}
 
 
-def _write_preview(data, fmt, uid):
-    return _write_temp(data, "save3d_{}.{}".format(_safe_id(uid), fmt))
+def _temp_stem(uid, wf=""):
+    """The node id, led by the workflow key when the browser sent one (parse_state accepts only
+    8 hex characters). Every Ep34 workflow has a Stage 1 viewer with id 363, and with the id alone
+    each of them showed whichever workflow ran last (2026-09-17). A run with no key keeps the old name."""
+    return "{}_{}".format(wf, _safe_id(uid)) if wf else _safe_id(uid)
+
+
+def _write_preview(data, fmt, uid, wf=""):
+    return _write_temp(data, "save3d_{}.{}".format(_temp_stem(uid, wf), fmt))
 
 
 def _view_format(model):
@@ -111,12 +119,12 @@ def _view_format(model):
     return "obj" if faces["quads"] + faces["ngons"] or model.poly.group_names else "glb"
 
 
-def _write_view(model, uid):
+def _write_view(model, uid, wf=""):
     """The fixed model standing on Y and unscaled, for the viewer, when the saved
     file stands on Z, is an STL, or sits in a folder /view cannot serve."""
     fmt = _view_format(model)
     data = m3.write_obj(model.poly, header=WHO) if fmt == "obj" else mio.glb_bytes(model, WHO)
-    return _write_temp(data, "save3d_{}_view.{}".format(_safe_id(uid), fmt))
+    return _write_temp(data, "save3d_{}_view.{}".format(_temp_stem(uid, wf), fmt))
 
 
 def _fix_report(state, shift):
@@ -277,7 +285,7 @@ class PixaromaSave3D:
         notes.extend(_format_notes(fixed, fmt))
         data, z_up = _file_bytes(fixed, fmt, state)
         saved = state["mode"] == "save"
-        info = _write_saved(data, fmt, state) if saved else _write_preview(data, fmt, unique_id)
+        info = _write_saved(data, fmt, state) if saved else _write_preview(data, fmt, unique_id, state["wf"])
         # An OBJ or GLB standing on Y that /view can serve is exactly what the
         # viewer needs; anything else gets a view file of its own, so the saved
         # file is never altered.
@@ -286,7 +294,7 @@ class PixaromaSave3D:
             view = info
         else:
             try:
-                view = _write_view(fixed, unique_id)
+                view = _write_view(fixed, unique_id, state["wf"])
             except Exception as exc:
                 # The file itself is already written: report it rather than fail the run and
                 # lose it, since a retry would save a second copy (backend review 2026-09-15).

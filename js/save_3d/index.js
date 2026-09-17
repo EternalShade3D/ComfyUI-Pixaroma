@@ -337,6 +337,22 @@ function findNode(index, id) {
   return tail && index.has(tail) ? index.get(tail) : null;
 }
 
+// A key for the workflow being run (FNV-1a of its tab path), so two workflows that use the same
+// node id keep their own preview file: every Ep34 file has a Stage 1 viewer with id 363, and each
+// showed whichever had run last (2026-09-17). Stable for a workflow, so it re-runs nothing on its
+// own; Python accepts only these 8 hex characters. No path (an older frontend) sends no key.
+function workflowKey() {
+  let path = "";
+  try { path = String(app.extensionManager?.workflow?.activeWorkflow?.path || ""); } catch (_e) { /* no store */ }
+  if (!path) return "";
+  let h = 0x811c9dc5;
+  for (let i = 0; i < path.length; i++) {
+    h ^= path.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
 const _origGraphToPrompt_fn = app.graphToPrompt;
 const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
@@ -345,6 +361,7 @@ app.graphToPrompt = async function (...args) {
     const out = result?.output;
     if (out) {
       let index = null;
+      let wf = null;
       for (const id in out) {
         const entry = out[id];
         if (!entry || entry.class_type !== CLASS) continue;
@@ -352,8 +369,9 @@ app.graphToPrompt = async function (...args) {
         const node = findNode(index, id);
         if (!node) continue;
         const st = readState(node);
+        if (wf === null) wf = workflowKey();
         entry.inputs = entry.inputs || {};
-        entry.inputs[HIDDEN_INPUT] = JSON.stringify(promptState(st));
+        entry.inputs[HIDDEN_INPUT] = JSON.stringify(wf ? { ...promptState(st), wf } : promptState(st));
         // What this run will write, so Save now can tell whether the file on the
         // node is still the one the settings describe.
         node._pixS3dSent = fileKey(st);
