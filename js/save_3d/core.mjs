@@ -202,7 +202,9 @@ export function runInfo(run) {
   if (run.groups) parts.push(run.groups === 1 ? "1 panel" : `${fmtInt(run.groups)} panels`);
   if (e.open) parts.push(`${fmtInt(e.open)} open edges`);
   if (e.broken) parts.push(`${fmtInt(e.broken)} broken`);
-  return parts.join(" · ");
+  // Non-breaking spaces inside each part, so the two-line info row wraps only
+  // between parts and never splits "20 open edges".
+  return parts.map((p) => p.replace(/ /g, " ")).join(" · ");
 }
 
 export function formatText(st, run) {

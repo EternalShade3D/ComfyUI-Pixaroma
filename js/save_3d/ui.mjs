@@ -108,8 +108,8 @@ export function injectCSS() {
 .${ROOT} .pix-s3d-name{flex:1 1 auto;min-width:0;box-sizing:border-box;display:flex;align-items:center;gap:6px;background:#1d1d1d;border:1px solid #444;border-radius:4px;padding:0 3px 0 8px;cursor:text;}
 .${ROOT} .pix-s3d-name:focus-within{border-color:${ACC};}
 .${ROOT} .pix-s3d-name input{flex:1 1 auto;min-width:0;width:40px;margin:0;padding:0;background:none;border:none;outline:none;color:#ddd;font:12px ${F};}
-.${ROOT} .pix-s3d-info{height:22px;box-sizing:border-box;display:flex;align-items:center;background:rgba(0,0,0,.25);border-radius:4px;padding:0 8px;font-size:11px;color:#aaa;white-space:nowrap;overflow:hidden;}
-.${ROOT} .pix-s3d-info span{overflow:hidden;text-overflow:ellipsis;}
+.${ROOT} .pix-s3d-info{min-height:22px;box-sizing:border-box;display:flex;align-items:center;background:rgba(0,0,0,.25);border-radius:4px;padding:4px 8px;font-size:11px;line-height:14px;color:#aaa;overflow:hidden;}
+.${ROOT} .pix-s3d-info span{overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;}
 .${ROOT} .pix-s3d-info.bad{color:#e8826f;}
 .pix-s3d-pop{position:fixed;z-index:10030;background:#1d1d1d;border:1px solid #444;border-radius:.4em;box-shadow:0 .6em 1.6em rgba(0,0,0,.55);padding:.25em;overflow-y:auto;font-family:${F};}
 .pix-s3d-popitem{padding:.42em .75em;border-radius:.3em;color:#ddd;cursor:pointer;white-space:nowrap;font-size:1em;}

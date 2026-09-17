@@ -31,11 +31,12 @@ import { SAVE_3D_HELP } from "./help.mjs";
 // CONSTANTS, never live measurements: getMinHeight drives node.size, and a
 // measured value comes back a pixel or two different between save and reload,
 // which flags an untouched workflow "modified" (Vue Compat #18). The fixed rows
-// are mode 28, views 24, looks 24, fix 26, check 22, format and name 26, info 22,
-// with seven 6px gaps and 2 + 8 of padding; the view fills what is left above its
-// floor. CHROME_H is MEASURED in Classic (#39, 2026-09-15): node.size[1] minus the
-// widget root = 56 above it (the two slot rows) + 10 below it.
-const WIDGET_MIN_H = 28 + 24 + 24 + 26 + 22 + 26 + 22 + 7 * 6 + 10 + VP_MIN;
+// are mode 28, views 24, looks 24, fix 26, check 22, format and name 26, info 36
+// (two 14px lines + 8 of padding: a run's line wraps once it holds a file name,
+// 2026-09-17), with seven 6px gaps and 2 + 8 of padding; the view fills what is
+// left above its floor. CHROME_H is MEASURED in Classic (#39, 2026-09-15):
+// node.size[1] minus the widget root = 56 above it (the two slot rows) + 10 below it.
+const WIDGET_MIN_H = 28 + 24 + 24 + 26 + 22 + 26 + 36 + 7 * 6 + 10 + VP_MIN;
 const CHROME_H = 66;
 const MIN_W = 360;
 const MIN_H = WIDGET_MIN_H + CHROME_H;
