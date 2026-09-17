@@ -12,6 +12,12 @@
 // forwardEventToCanvas): forward the wheel to the canvas UNLESS the cursor is over
 // a scrollable region that still has room to scroll in that direction (then let
 // it scroll normally, e.g. a long prompt textarea or a checklist).
+//
+// The same layering also swallowed MIDDLE-BUTTON PANNING: LiteGraph listens for
+// pointerdown / pointermove / pointerup on the <canvas> itself, so a middle drag
+// that starts on a node body never reached it and the canvas did not move
+// (reported 2026-09-13 on Save Image and Pause Image; measured on every node with
+// a DOM body). installCanvasZoomPassthrough forwards that too, see below.
 
 import { app } from "/scripts/app.js";
 import { isVueNodes } from "./nodes2.mjs";
@@ -65,12 +71,52 @@ function scrollRegionWantsWheel(target, root, deltaX, deltaY) {
   return false;
 }
 
+// ---- middle-button pan -------------------------------------------------------
+// A copy of what ComfyUI itself does in Nodes 2.0, so both renderers behave the
+// same: GraphCanvas.vue listens on the layer holding every node in the CAPTURE
+// phase and re-dispatches any middle press, held move or release on the canvas
+// (useCanvasInteractions.forwardEventToCanvas), before the node's own handlers
+// see it. The one exception is also core's: a text field that already HAS FOCUS
+// keeps its middle press (shouldIgnoreCopyPaste + activeElement check).
+// CAPTURE is deliberate: dozens of our text boxes and buttons stop pointerdown
+// from bubbling, and a bubble listener would leave a dead zone on every one.
+// Once the canvas gets the press, its CanvasPointer takes pointer capture, so the
+// moves and the release go straight to it; forwarding them here as well is core's
+// safety net for a capture that did not take.
+const isMiddlePress = (e) => e.button === 1 || e.buttons === 4;  // core: isMiddlePointerInput
+const isMiddleHeld = (e) => (e.buttons & 4) === 4;                // core: isMiddleButtonHeld
+const isMiddleRelease = (e) => e.button === 1;                    // core: isMiddleButtonEvent
+
+const NON_TEXT_INPUT_TYPES = new Set([
+  "button", "checkbox", "file", "hidden", "image", "radio", "range", "reset", "search", "submit",
+]);
+
+// core's shouldIgnoreCopyPaste, limited (as core limits it) to the focused element.
+function focusedFieldKeepsPress(target) {
+  if (!target || target !== document.activeElement) return false;
+  const isTextInput = target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLInputElement && !NON_TEXT_INPUT_TYPES.has(target.type));
+  if (isTextInput) return true;
+  try { return !!window.getSelection?.()?.toString(); } catch { return false; }
+}
+
+function forwardPanToCanvas(e, matches) {
+  if (isVueNodes()) return;                    // Nodes 2.0 forwards these itself
+  if (!matches(e) || focusedFieldKeepsPress(e.target)) return;
+  const canvasEl = app?.canvas?.canvas;        // read lazily; the canvas can be recreated
+  if (!canvasEl) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();                // the node's own handlers never see it
+  canvasEl.dispatchEvent(new PointerEvent(e.type, e));
+}
+
 // Install wheel passthrough on an in-node DOM widget `root` so the mouse wheel
 // zooms the ComfyUI canvas when the cursor is over the widget (Classic renderer),
-// except over a scrollable region that still has room to scroll. Safe to call
-// unconditionally - it no-ops in Nodes 2.0. Returns an uninstall fn (optional to
-// call; the listener is garbage-collected with the element when the node is
-// removed, and a detached element never receives wheel events).
+// except over a scrollable region that still has room to scroll - and the
+// middle-button pan passthrough above. Safe to call unconditionally - both no-op
+// in Nodes 2.0. Returns an uninstall fn (optional to call; the listeners are
+// garbage-collected with the element when the node is removed, and a detached
+// element never receives these events).
 export function installCanvasZoomPassthrough(root) {
   if (!root || typeof root.addEventListener !== "function") return () => {};
   const onWheel = (e) => {
@@ -91,5 +137,16 @@ export function installCanvasZoomPassthrough(root) {
     }));
   };
   root.addEventListener("wheel", onWheel, { passive: false });
-  return () => root.removeEventListener("wheel", onWheel);
+  const onPanDown = (e) => forwardPanToCanvas(e, isMiddlePress);
+  const onPanMove = (e) => forwardPanToCanvas(e, isMiddleHeld);
+  const onPanUp = (e) => forwardPanToCanvas(e, isMiddleRelease);
+  root.addEventListener("pointerdown", onPanDown, true);
+  root.addEventListener("pointermove", onPanMove, true);
+  root.addEventListener("pointerup", onPanUp, true);
+  return () => {
+    root.removeEventListener("wheel", onWheel);
+    root.removeEventListener("pointerdown", onPanDown, true);
+    root.removeEventListener("pointermove", onPanMove, true);
+    root.removeEventListener("pointerup", onPanUp, true);
+  };
 }
