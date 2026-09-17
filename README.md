@@ -392,6 +392,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **September 17, 2026 · v1.4.152**
+- **Fixed: Save 3D views could stay on "Loading ..." until a page refresh**, after a Load 3D node had been open.
+- **Fixed: a Save 3D node could show the model from another workflow.** Each workflow now keeps its own preview.
+- **If the browser stops drawing 3D views, Load 3D and Save 3D now say so** and try again on their own, instead of staying dark.
+- **The info line under Save 3D's view wraps to two lines**, so nothing is cut off.
+
 ### **September 16, 2026 · v1.4.151**
 - **NEW: Save 3D Pixaroma.** See a 3D model on the node, check which way it faces, stand it on the ground, and save it as OBJ, GLB or STL.
 - **Preview Image Pixaroma no longer makes everything after it run again.** Change a late setting and only the steps after it are redone, so 3D workflows are much quicker to tweak.
