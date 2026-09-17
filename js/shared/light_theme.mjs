@@ -170,7 +170,9 @@ ${LIGHT} span.pix-tj-ic { ${BTN} }
 ${LIGHT} div.pix-fr-root { color:${C.text}; }
 ${LIGHT} div.pix-fr-tog { ${BTN} color:${C.dim}; }
 ${LIGHT} div.pix-fr-tog:not(.on):hover { color:${C.text}; }
-${LIGHT} div.pix-fr-tog.is-muted, ${LIGHT} div.pix-fr-tog.is-muted:hover { border-color:${C.offBorder}; color:${C.dim}; }
+/* :not(.on): a pill can be ON and muted at once (Whole word, then Regex); the type selector would
+   otherwise outrank the node's own ".on" white text and leave dark grey on the orange fill */
+${LIGHT} div.pix-fr-tog.is-muted:not(.on), ${LIGHT} div.pix-fr-tog.is-muted:not(.on):hover { border-color:${C.offBorder}; color:${C.dim}; }
 ${LIGHT} div.pix-fr-row { background:${C.card}; border-color:${C.cardBorder}; }
 ${LIGHT} span.pix-fr-handle { color:${C.icon}; }
 ${LIGHT} span.pix-fr-handle:hover { color:${C.text}; }
