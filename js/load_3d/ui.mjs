@@ -17,7 +17,7 @@ import {
   readState, writeState, splitModelName, isModelFile,
 } from "./core.mjs";
 import {
-  attachCanvas, setModel, statusOf, requestDraw, animateView, infoText, invalidateModel, panScale,
+  attachCanvas, setModel, statusOf, requestDraw, animateView, infoText, invalidateModel, panScale, drawBlocked,
 } from "./engine.mjs";
 import { sizeSources, sizeNote, isLocked } from "./size.mjs";
 
@@ -336,6 +336,10 @@ export function renderFace(node) {
     line = "Loading ...";
   } else {
     line = infoText(s.info);
+    if (drawBlocked(node)) {
+      // Loaded, but the browser would not draw it (engine.mjs markBlocked): it retries on its own.
+      msg = "The browser stopped drawing 3D views.\nRefresh the page (F5) if the model does not come back.";
+    }
   }
   // A wired size that cannot be used outranks the file line, but not a file that
   // failed to open.

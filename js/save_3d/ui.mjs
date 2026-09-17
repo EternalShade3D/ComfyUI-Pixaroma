@@ -13,7 +13,7 @@ import { ACC, applyAccent } from "../shared/node_settings.mjs";
 import { placeZoomedPopup } from "../shared/popup_zoom.mjs";
 import { notifyGraphChanged } from "../shared/graph_changed.mjs";
 import { isVueNodes } from "../shared/nodes2.mjs";
-import { statusOf, requestDraw, animateView, panScale } from "../load_3d/engine.mjs";
+import { statusOf, requestDraw, animateView, panScale, drawBlocked } from "../load_3d/engine.mjs";
 import {
   FORMATS, LOOKS, MODES, VIEWS, facesText, fileKey, formatText, inputsUnwired, readLastRun, readState,
   runInfo, turnsAfter, writeState,
@@ -377,6 +377,10 @@ export function renderFace(node) {
     bad = true;
   } else if (s.status !== "ready") {
     msg = "Loading ...";
+  } else if (drawBlocked(node)) {
+    // Loaded, but the browser would not draw it (engine.mjs markBlocked): it retries on its own.
+    msg = "The browser stopped drawing 3D views.\nRefresh the page (F5) if the model does not come back.";
+    bad = true;
   }
   els.msg.textContent = msg;
   els.msg.classList.toggle("bad", bad);

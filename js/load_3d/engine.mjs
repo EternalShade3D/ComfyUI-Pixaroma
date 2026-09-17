@@ -82,6 +82,7 @@ export function detach(node) {
   disposeModel(rec);
   _recs.delete(node);
   _dirty.delete(node);
+  _blocked.delete(node);
 }
 
 export function statusOf(node) {
@@ -752,6 +753,7 @@ function lookBackground(st) {
 let _renderer = null;
 let _env = null;
 
+let _glWarned = false;
 function getRenderer(THREE) {
   if (_renderer) {
     let lost = false;
@@ -766,8 +768,11 @@ function getRenderer(THREE) {
     _renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
     _renderer.setPixelRatio(1);
     _renderer.outputColorSpace = THREE.SRGBColorSpace;
+    _glWarned = false;
   } catch (e) {
-    console.warn("[Pixaroma.Load3D] WebGL is not available", e);
+    // Blocked views retry every few seconds (see markBlocked): say it once, not on every retry.
+    if (!_glWarned) console.warn("[Pixaroma.Load3D] WebGL is not available", e);
+    _glWarned = true;
     _renderer = null;
   }
   return _renderer;
@@ -919,6 +924,40 @@ export function requestDraw(node) {
   if (!_raf) _raf = requestAnimationFrame(flush);
 }
 
+// A loaded model the browser would not draw: no WebGL context could be had (Chrome refuses new ones
+// for a page after repeated GPU resets) or the draw threw. The view used to stay dark with no word of
+// why until something else asked for a draw, so the user had to refresh (2026-09-17). Such nodes are
+// kept here, retried every few seconds, and their face is told, so it can say so.
+const _blocked = new Set();
+const RETRY_MS = 2000;
+let _retry = 0;
+
+/** True while this node's loaded model could not be drawn. */
+export function drawBlocked(node) {
+  return _blocked.has(node);
+}
+
+function markBlocked(rec) {
+  if (!_blocked.has(rec.node)) {
+    _blocked.add(rec.node);
+    try { rec.onStatus?.(); } catch (_e) { /* the face may be gone */ }
+  }
+  if (!_retry) _retry = setTimeout(retryBlocked, RETRY_MS);
+}
+
+function markDrawn(rec) {
+  if (!_blocked.delete(rec.node)) return;
+  try { rec.onStatus?.(); } catch (_e) { /* the face may be gone */ }
+}
+
+function retryBlocked() {
+  _retry = 0;
+  for (const node of [..._blocked]) {
+    if (_recs.has(node)) requestDraw(node);
+    else _blocked.delete(node);
+  }
+}
+
 function flush() {
   _raf = 0;
   const nodes = [..._dirty];
@@ -927,7 +966,9 @@ function flush() {
     try {
       drawNow(n);
     } catch (e) {
-      console.warn("[Pixaroma.Load3D] draw failed", e);
+      const rec = _recs.get(n);
+      if (!rec || !_blocked.has(n)) console.warn("[Pixaroma.Load3D] draw failed", e);
+      if (rec?.status === "ready" && rec.model) markBlocked(rec);
     }
   }
 }
@@ -1039,11 +1080,13 @@ function drawNow(node) {
   const fr = { x: f.x * (bw / cssW), y: f.y * (bh / cssH), w: f.w * (bw / cssW), h: f.h * (bh / cssH) };
 
   const THREE = _THREE;
-  const r = rec.status === "ready" && rec.model && THREE ? getRenderer(THREE) : null;
+  const wantsModel = rec.status === "ready" && !!rec.model && !!THREE;
+  const r = wantsModel ? getRenderer(THREE) : null;
   if (!r) {
     ctx.fillStyle = lookBackground(st);
     ctx.fillRect(0, 0, bw, bh);
     if (!stage) drawFrame(ctx, fr, bw, bh, sc, st);
+    if (wantsModel) markBlocked(rec);
     return;
   }
   if (stage) {
@@ -1056,6 +1099,7 @@ function drawNow(node) {
     ctx.clearRect(0, 0, bw, bh);
     ctx.drawImage(r.domElement, 0, 0, bw, bh, 0, 0, bw, bh);
     if (st.marker !== false) drawMarker(ctx, scam, bw, bh, sc);
+    markDrawn(rec);
     return;
   }
   applyOrientation(THREE, rec, st);
@@ -1065,6 +1109,7 @@ function drawNow(node) {
   ctx.clearRect(0, 0, bw, bh);
   ctx.drawImage(r.domElement, 0, 0, bw, bh, 0, 0, bw, bh);
   drawFrame(ctx, fr, bw, bh, sc, st);
+  markDrawn(rec);
 }
 
 function toBlob(canvas) {
