@@ -148,13 +148,123 @@ function parseAnnotatedImageValue(value) {
 // to src.imgs, which for this node is the /view URL of the INPUT file - i.e.
 // always the original. Rather than guess a resized preview we cannot produce,
 // say plainly which picture is on screen.
+// A wire into `image` can pass through nodes that hold NO picture of their own in
+// the browser, so src.imgs is empty and the editor opened blank / never refreshed:
+//   • Switch Source Pixaroma  - routes one bank's wire to its output (a_N/b_N)
+//   • Join Image with Alpha   - keeps the RGB of its `image` input, adds alpha
+//   • Split Image with Alpha  - takes the RGB back out of its `image` input
+//   • Image Info Pixaroma     - unpacks a loader's bundle; its image output IS
+//                               the loader's image
+// Walk THROUGH all of them, in any order and any number of hops, to the node that
+// really holds the pixels, and use that. Stopping at the first hop (a switch, or
+// a join) left the node with nothing to show. The active bank lives in
+// node.properties.switchSourceState ({ active:"A"|"B", ... }); output slot N
+// (0-based) maps to row N+1 and input a_{N+1}/b_{N+1}.
+const PASSTHROUGH_INPUT = {
+  JoinImageWithAlpha: "image",
+  SplitImageWithAlpha: "image",
+  PixaromaImageInfo: "image_info",
+};
+const MAX_SOURCE_HOPS = 12;
+
+function inputByName(node, name) {
+  return (node.inputs || []).find((s) => s.name === name) || null;
+}
+
+function linkById(graph, id) {
+  let link = graph?.links?.[id];
+  if (!link && typeof graph?.links?.get === "function") link = graph.links.get(id);
+  return link || null;
+}
+
+function isSwitchSource(node) {
+  return !!node && (node.comfyClass === "PixaromaSwitchSource" || node.type === "PixaromaSwitchSource");
+}
+
+// Which input link the switch is routing right now, for the given output slot.
+function switchRoutedLink(sw, outSlot) {
+  // node.properties.switchSourceState is written by the switch's own readState
+  // as a PARSED OBJECT (not a JSON string), so a bare JSON.parse() would
+  // THROW and leave us on the default bank - which is exactly why B was never
+  // picked. Handle both: JSON string -> parse, object -> use as-is.
+  let state = {};
+  try {
+    const raw = sw.properties && sw.properties.switchSourceState;
+    if (typeof raw === "string") state = JSON.parse(raw || "{}");
+    else if (raw && typeof raw === "object") state = raw;
+  } catch { }
+  const active = state.active === "B" ? "B" : "A";
+  const slot = inputByName(sw, (active === "A" ? "a_" : "b_") + ((outSlot || 0) + 1));
+  return slot && slot.link != null ? slot.link : null;
+}
+
+// One hop back through a router, or undefined when this node is not a router -
+// i.e. it holds (or produces) the picture itself.
+function nextHopLink(node, outSlot) {
+  if (isSwitchSource(node)) return switchRoutedLink(node, outSlot);
+  const through = PASSTHROUGH_INPUT[node?.comfyClass] || PASSTHROUGH_INPUT[node?.type];
+  if (!through) return undefined;
+  return inputByName(node, through)?.link ?? null;
+}
+
+function resolveLink(graph, linkId, depth) {
+  if (depth > MAX_SOURCE_HOPS) return null;
+  const link = linkById(graph, linkId);
+  const src = link && graph?.getNodeById(link.origin_id);
+  if (!src) return null;
+  const outSlot = link.origin_slot ?? 0;
+  const hop = nextHopLink(src, outSlot);
+  if (hop === undefined) return { node: src, slot: outSlot };
+  return hop != null ? resolveLink(graph, hop, depth + 1) : null;
+}
+
+function getRealImageSource(node) {
+  const graph = node?.graph;
+  const input = inputByName(node, "image");
+  if (!input || input.link == null || !graph) return null;
+  return resolveLink(graph, input.link, 0);
+}
+
+// Is `id` anywhere in this node's upstream image chain, through every router?
+// Used by the change hooks: the switch/loader that changed can be several hops
+// back (switch -> join -> image info -> loader), not just the immediate one.
+function sourceChainHasId(node, id) {
+  const graph = node?.graph;
+  let link = inputByName(node, "image")?.link;
+  if (link == null || !graph) return false;
+  for (let i = 0; i <= MAX_SOURCE_HOPS; i++) {
+    const l = linkById(graph, link);
+    const src = l && graph.getNodeById(l.origin_id);
+    if (!src) return false;
+    if (src.id === id) return true;
+    const hop = nextHopLink(src, l.origin_slot ?? 0);
+    if (hop === undefined || hop == null) return false;
+    link = hop;
+  }
+  return false;
+}
+
+// What the resolved source currently holds, as a string WITHOUT the cache
+// buster. A switch flip, a re-join and a loader swapping file all happen without
+// a connection change or an executed event, so the node watches this instead of
+// guessing when to refresh.
+function sourceFingerprint(node) {
+  const r = getRealImageSource(node);
+  if (!r || !r.node) return "";
+  const src = r.node;
+  let held = "";
+  const w = (src.widgets || []).find((x) => x.name === "image");
+  if (w && typeof w.value === "string") held = w.value;
+  else {
+    const img = (src.imgs || [])[r.slot] || (src.imgs || [])[0];
+    held = img ? (typeof img === "string" ? img : (img.src || "")) : "";
+  }
+  return `${src.id}|${r.slot}|${held}`;
+}
+
 function upstreamResizeNote(node) {
-  const graph = node.graph;
-  const input = (node.inputs || []).find((i) => i.name === "image");
-  if (!input || input.link == null || !graph) return "";
-  let link = graph.links?.[input.link];
-  if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
-  const src = link && graph.getNodeById(link.origin_id);
+  const r = getRealImageSource(node);
+  const src = r && r.node;
   if (!src || src.comfyClass !== "PixaromaLoadImage") return "";
   let st = null;
   try {
@@ -171,26 +281,20 @@ function upstreamResizeNote(node) {
 
 function getUpstreamImageURL(node) {
   // Prefer the LIVE wired source so a just-changed Load Image (or any live
-  // preview) is what the editor opens. The cached executed-source URL below is
-  // only a fallback for generative upstreams whose pixels exist solely as the
-  // temp PNG the Python node saved on the last run. (Without this order,
-  // swapping the Load Image file showed the PREVIOUS run's image until re-run.)
-  const input = (node.inputs || []).find((i) => i.name === "image");
-  const graph = node.graph;
-  if (input && input.link != null && graph) {
-    let link = graph.links?.[input.link];
-    if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
-    const src = link && graph.getNodeById(link.origin_id);
-    if (src) {
-      if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
-        const w = (src.widgets || []).find((x) => x.name === "image");
-        if (w && w.value) return buildSourceURL(parseAnnotatedImageValue(w.value), true);
-      }
-      if (src.imgs && src.imgs.length > 0) {
-        const img = src.imgs[link.origin_slot] || src.imgs[0];
-        if (typeof img === "string") return img;
-        if (img && img.src) return img.src;
-      }
+  // preview) is what the editor opens. getRealImageSource walks through a
+  // PixaromaSwitchSource to the actual selected source, so the same logic that
+  // works for a direct wire also works behind a switch.
+  const r = getRealImageSource(node);
+  if (r) {
+    const src = r.node;
+    if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
+      const w = (src.widgets || []).find((x) => x.name === "image");
+      if (w && w.value) return buildSourceURL(parseAnnotatedImageValue(w.value), true);
+    }
+    if (src.imgs && src.imgs.length > 0) {
+      const img = src.imgs[r.slot] || src.imgs[0];
+      if (typeof img === "string") return img;
+      if (img && img.src) return img.src;
     }
   }
   // fallback: source PNG from the last Python execute (generative upstreams, or
@@ -433,6 +537,35 @@ app.registerExtension({
     };
     api.addEventListener("executed", onExec);
 
+    // A source change the browser is never told about. The switch and the
+    // loader hold no image to push, and picking a new file in a loader fires no
+    // widget event either - so the resolved source is fingerprinted and
+    // re-resolved only when that fingerprint actually moves. This is what makes
+    // the node follow a Switch Source flip, a re-join, and a swapped Load Image
+    // without a re-run. 800ms is the same order as the loader's own 350ms poll
+    // and costs one string compare per tick.
+    const onSwitchChanged = (e) => {
+      const srcId = e?.detail?.id;
+      if (srcId == null) return;
+      // the switch can be several hops back (switch -> join -> image info -> loader)
+      if (!sourceChainHasId(node, srcId)) return;
+      node._pixInpaintSourceURL = null;
+      node._pixInpaintRefresh?.();
+    };
+    document.addEventListener("pix-switch-source-changed", onSwitchChanged);
+
+    node._pixInpaintFp = sourceFingerprint(node);
+    node._pixInpaintFpTimer = setInterval(() => {
+      if (!node.graph) { try { clearInterval(node._pixInpaintFpTimer); } catch (e) {} node._pixInpaintFpTimer = null; return; }
+      if (typeof document !== "undefined" && document.hidden) return;
+      let fp = "";
+      try { fp = sourceFingerprint(node); } catch (e) { return; }
+      if (fp === node._pixInpaintFp) return;
+      node._pixInpaintFp = fp;
+      node._pixInpaintSourceURL = null;
+      node._pixInpaintRefresh?.();
+    }, 800);
+
     // wrap (don't clobber) any existing handler from the prototype / another ext;
     // forward all args, then run our image-input source-preview logic.
     const origConnChange = node.onConnectionsChange;
@@ -453,6 +586,9 @@ app.registerExtension({
       try { parts?.resizeObserver?.disconnect(); } catch (e) {}
       origRemoved?.call(node);
       try { api.removeEventListener("executed", onExec); } catch {}
+      try { document.removeEventListener("pix-switch-source-changed", onSwitchChanged); } catch {}
+      try { clearInterval(node._pixInpaintFpTimer); } catch (e) {}
+      node._pixInpaintFpTimer = null;
     };
   },
 });
