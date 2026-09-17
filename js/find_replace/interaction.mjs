@@ -5,6 +5,7 @@
 // may legitimately contain newlines), so it is NOT intercepted.
 
 import { setFind, setReplace } from "./core.mjs";
+import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 
 function autoGrow(ta) {
   // Empty field: pin to one line. Do NOT grow for the wrapped PLACEHOLDER -
@@ -62,8 +63,9 @@ export function attachFieldEditor(node, taEl, ruleId, which) {
   });
 
   taEl.addEventListener("keydown", (e) => {
-    // Let Ctrl/Cmd+Enter bubble to ComfyUI's "run workflow" shortcut.
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;
+    // Let ComfyUI's own text-box shortcuts bubble: Ctrl/Cmd+Enter runs the
+    // workflow, Ctrl/Cmd+Up/Down changes a word's weight.
+    if (isComfyTextShortcut(e)) return;
     e.stopImmediatePropagation();
   });
 

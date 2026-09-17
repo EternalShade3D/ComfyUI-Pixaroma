@@ -5,6 +5,7 @@
 // ComfyUI's canvas keybindings (Load Image Pattern #6).
 
 import { setLabel, setText } from "./core.mjs";
+import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 
 export function attachLabelEditor(node, inputEl, rowId) {
   const original = inputEl.value;
@@ -77,8 +78,9 @@ export function attachTextareaEditor(node, taEl, rowId) {
   });
 
   taEl.addEventListener("keydown", (e) => {
-    // Let Ctrl/Cmd+Enter bubble to ComfyUI's "run workflow" shortcut (issue #41).
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;
+    // Let ComfyUI's own text-box shortcuts bubble: Ctrl/Cmd+Enter runs the
+    // workflow (issue #41), Ctrl/Cmd+Up/Down changes a word's weight.
+    if (isComfyTextShortcut(e)) return;
     e.stopImmediatePropagation();
   });
 

@@ -5,6 +5,7 @@ import {
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeSettings } from "../shared/node_settings.mjs";
+import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 // Only the re-highlight fanout is still needed here: everything that READS the
 // library (which tags exist, which category rolls what) moved into tag_field.mjs.
 import { subscribe } from "./library.mjs";
@@ -224,7 +225,8 @@ const PROMPT_HELP = {
       heading: "Writing a prompt",
       body:
         "Type your prompt in the box. To reuse a chunk you type a lot, save it once as a tag and then type `@name` for it. Type `@` to get a searchable list grouped by category - arrow keys and Enter to insert.\n\n" +
-        "Known tags glow in your accent colour; an unknown `@tag` glows red so you spot a typo. At run time each `@tag` is swapped for its full text, so the box stays short. `Show expanded` previews exactly what will be sent.",
+        "Known tags glow in your accent colour; an unknown `@tag` glows red so you spot a typo. At run time each `@tag` is swapped for its full text, so the box stays short. `Show expanded` previews exactly what will be sent.\n\n" +
+        "Select some words and press `Ctrl+Up` or `Ctrl+Down` to raise or lower their weight, for example `(red hair:1.1)`, the same as in ComfyUI's own prompt boxes. `Ctrl+Enter` runs the workflow.",
     },
     {
       heading: "Random each run",
@@ -444,7 +446,7 @@ function buildRoot(node) {
   const ta = document.createElement("textarea");
   ta.className = "pix-prm-ta";
   ta.placeholder = "your prompt - @ a tag, * a random tag, # a random line";
-  ta.title = "Type your prompt. @name inserts a tag, *category picks a random tag each run, #name picks a random line from a list. Ctrl+Enter runs the workflow.";
+  ta.title = "Type your prompt. @name inserts a tag, *category picks a random tag each run, #name picks a random line from a list. Ctrl+Up / Ctrl+Down changes the weight of the selected words. Ctrl+Enter runs the workflow.";
   ta.spellcheck = false;
   tawrap.append(backdrop, ta);
 
@@ -682,7 +684,10 @@ function wireEvents(node, root) {
     // is open). It deliberately does NOT claim Ctrl/Cmd+Enter - it closes and lets it
     // bubble, so running the workflow from the prompt box still works.
     if (acKeydown(e)) return;
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return; // let ComfyUI run the workflow
+    // ComfyUI's own text-box shortcuts: Ctrl/Cmd+Enter runs the workflow and
+    // Ctrl/Cmd+Up/Down changes a word's weight. Its weight edit arrives as an
+    // ordinary input event, so the coloured backdrop and promptState follow it.
+    if (isComfyTextShortcut(e)) return;
     e.stopPropagation();
   });
   els.ta.addEventListener("mousedown", (e) => e.stopPropagation());

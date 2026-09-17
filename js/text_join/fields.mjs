@@ -18,6 +18,7 @@ import { app } from "/scripts/app.js";
 import { widgetOf, BRAND, readState, labelFor } from "./core.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, installResizeFloor, installCanvasZoomPassthrough } from "../shared/index.mjs";
 import { ACC, installNodeAccent } from "../shared/node_settings.mjs";
+import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 
 export const MIN_FIELD_H = 56;     // smallest a single field box can shrink to
 const DEF_FIELD_H = 84;            // comfortable default per field on a fresh node
@@ -227,7 +228,7 @@ function makeFieldRow(node, cfg) {
 
   ta.addEventListener("input", () => mirror(node, cfg, ta));
   ta.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;  // let run-workflow through
+    if (isComfyTextShortcut(e)) return;                         // let run-workflow and word-weight through
     e.stopPropagation();                                        // don't fire canvas shortcuts
   });
   ta.addEventListener("pointerdown", (e) => e.stopPropagation());

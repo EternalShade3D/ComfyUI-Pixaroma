@@ -3,6 +3,7 @@ import { BRAND, applyAdaptiveCanvasOnly, registerNodeHelp, closeHelpPopup, isVue
   installCanvasZoomPassthrough, installNativeTextMenu, installNodeAccent, registerNodeAccent,
 } from "../shared/index.mjs";
 import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
+import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 
 // Text Pixaroma: multi-line text field with a STRING output. The native
 // ComfyUI multiline widget is HIDDEN; we render our own DOM widget so the
@@ -209,7 +210,7 @@ const TEXT_HELP = {
     {
       heading: "The text box",
       body:
-        "Type any text or prompt here and it comes out the `text` output. The box grows with the node - drag the bottom-right corner to make it bigger. Press `Ctrl+Enter` to run the workflow without leaving the box.\n\n" +
+        "Type any text or prompt here and it comes out the `text` output. The box grows with the node - drag the bottom-right corner to make it bigger. Press `Ctrl+Enter` to run the workflow without leaving the box, and select some words then press `Ctrl+Up` or `Ctrl+Down` to raise or lower their weight, for example `(red hair:1.1)`.\n\n" +
         "Tip: to RECEIVE text from another node instead of typing, use Show Text Pixaroma - this node is for typing.",
     },
     {
@@ -310,7 +311,7 @@ function buildRoot() {
   const ta = document.createElement("textarea");
   ta.className = "pix-text-ta";
   ta.placeholder = "text";
-  ta.title = "Type your text or prompt here. Press Ctrl+Enter to run the workflow.";
+  ta.title = "Type your text or prompt here. Ctrl+Up / Ctrl+Down changes the weight of the selected words. Press Ctrl+Enter to run the workflow.";
   ta.spellcheck = false;
   tawrap.appendChild(ta);
 
@@ -435,11 +436,11 @@ function wireEvents(node, root) {
     updateClearEnabled(root);
   });
   els.ta.addEventListener("keydown", (e) => {
-    // Let Ctrl/Cmd+Enter bubble up to ComfyUI's "run workflow" shortcut
-    // (issue #41) - this node is used for prompts, so running straight
-    // from the keyboard matters. Everything else is stopped so single-key
-    // shortcuts (Q queue, Delete, etc) don't fire while typing.
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;
+    // Let ComfyUI's own text-box shortcuts bubble up: Ctrl/Cmd+Enter runs the
+    // workflow (issue #41) and Ctrl/Cmd+Up/Down changes a word's weight - this
+    // node is used for prompts, so both matter. Everything else is stopped so
+    // single-key shortcuts (Q queue, Delete, etc) don't fire while typing.
+    if (isComfyTextShortcut(e)) return;
     e.stopPropagation();
   });
   els.ta.addEventListener("mousedown", (e) => { e.stopPropagation(); });

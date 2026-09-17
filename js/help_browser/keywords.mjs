@@ -48,14 +48,14 @@ export const KEYWORDS = {
   PixaromaPauseImage: "stop check gate review approve interrupt",
 
   // ── Prompt and text ──
-  PixaromaPrompt: "tag library wildcard random autocomplete snippet phrase reorder order sort rearrange move category colour color highlight underline resize sidebar rename",
+  PixaromaPrompt: "tag library wildcard random autocomplete snippet phrase reorder order sort rearrange move category colour color highlight underline resize sidebar rename weight emphasis attention ctrl up down brackets",
   PixaromaPromptMulti: "batch queue many list prompts",
   PixaromaPromptEach: "list batch bulk many multiple prompts one per line each every all at once single run output_is_list brackets combinations variations expand queue several",
   PixaromaPromptPack: "batch paste queue block many prompts separator split blank line new line dashes --- paragraph reuse rerun run again txt file import load collected save text",
   PixaromaPromptStack: "assemble parts toggle build pieces chunks",
   PixaromaPromptFromList: "index pick number choose",
   PixaromaFindReplace: "replace swap substitute rules change words",
-  PixaromaText: "string write field type note textbox",
+  PixaromaText: "string write field type note textbox weight emphasis attention ctrl up down",
   PixaromaShowText: "debug display print inspect see value preview text",
   PixaromaPromptReader: "metadata png extract read recover steal prompt from image exif",
   PixaromaPauseText: "llm edit review gate check interrupt cache cached runs again re-runs ksampler restarts fixed seed slow",

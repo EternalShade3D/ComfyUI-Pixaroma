@@ -10,6 +10,7 @@
 import { app } from "/scripts/app.js";
 import { setText, setMode, readState } from "./core.mjs";
 import { applyState, updateCounter, updateClearButton } from "./render.mjs";
+import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 
 function flashBtnText(btn, label) {
   const orig = btn.textContent;
@@ -48,10 +49,11 @@ export function wireEvents(node, root) {
   // Must be stopImmediatePropagation, NOT stopPropagation - ComfyUI/LiteGraph
   // listen at the document level and stopPropagation alone leaks (Load Image
   // Pattern #6; matches Prompt Stack / Prompt Multi).
-  // Exception: let Ctrl/Cmd+Enter bubble so the "run workflow" shortcut fires
-  // straight from the prompt field (issue #41).
+  // Exception: ComfyUI's own text-box shortcuts bubble - Ctrl/Cmd+Enter runs
+  // the workflow straight from the prompt field (issue #41) and Ctrl/Cmd+Up/Down
+  // changes a word's weight.
   els.ta.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;
+    if (isComfyTextShortcut(e)) return;
     e.stopImmediatePropagation();
   });
 

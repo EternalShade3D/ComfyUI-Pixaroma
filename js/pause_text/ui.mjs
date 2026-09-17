@@ -8,6 +8,7 @@
 import { BRAND } from "../shared/utils.mjs";
 import { ACC_HOVER } from "../shared/node_settings.mjs";
 import { getState, isEdited } from "./state.mjs";
+import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 
 // Fixed vertical budget for the non-fill rows -> getMinHeight is a per-renderer
 // CONSTANT (Vue Compat #18): byte-identical every save/load, node.size never
@@ -174,7 +175,7 @@ export function buildPauseTextWidget(node, callbacks) {
   // Events. stopPropagation so canvas drag/deselect/shortcuts don't fire.
   ta.addEventListener("input", () => callbacks.onInput(ta.value));
   ta.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;  // let run-workflow through
+    if (isComfyTextShortcut(e)) return;  // let run-workflow and word-weight through
     e.stopPropagation();
   });
   ta.addEventListener("pointerdown", (e) => e.stopPropagation());
