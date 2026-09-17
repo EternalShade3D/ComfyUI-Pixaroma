@@ -88,15 +88,24 @@ function liveNodes() {
   return [...new Set(buildIndex().values())];
 }
 
+function isLoad3D(n) {
+  return n?.comfyClass === CLASS || n?.type === CLASS;
+}
+
 function watchModels() {
   if (_poll) return;
   _poll = setInterval(() => {
     const live = liveNodes();
     const liveSet = new Set(live);
     for (const n of knownNodes()) {
+      // The engine is shared with Save 3D, and liveNodes() holds Load 3D nodes only: without this
+      // check every Save 3D view that was out of the page for a moment (a workflow opening, a tab
+      // switch) lost its model and said "Loading ..." until a refresh, in any session where a
+      // Load 3D node had ever been opened (2026-09-17). Save 3D releases its own records.
+      if (!isLoad3D(n)) continue;
       if (!liveSet.has(n) && !canvasAttached(n)) detach(n);
     }
-    if (!live.length && !knownNodes().length) {
+    if (!live.length && !knownNodes().some(isLoad3D)) {
       clearInterval(_poll);
       _poll = 0;
       return;
