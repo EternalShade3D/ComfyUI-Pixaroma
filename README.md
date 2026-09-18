@@ -392,6 +392,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **September 18, 2026 · v1.4.154**
+- **Save Mp4 Pixaroma now takes a whole video, not only frames.** There is a new `video` input for ComfyUI's own video type, so you can re-save a clip without unpacking it first. Its sound comes along with it, and it keeps its own frame rate, so it comes out the same length it went in.
+- **Save Mp4 and Load Video Pixaroma show the video size on the node.** Save Mp4 shows the size of what it made, on the top right; Load Video shows the size of the clip you picked, on the top left. Neither makes the node any taller, and nothing is shown until there is something to show.
+
 ### **September 17, 2026 · v1.4.152–v1.4.153**
 - **Fixed: middle-mouse drag did not move the canvas over a node's picture or text box.** Now it does, over 3D views too.
 - **Fixed: LoRA Loader forgot your trigger words when a LoRA was moved to another folder.** Pick the moved file again and they come back.
