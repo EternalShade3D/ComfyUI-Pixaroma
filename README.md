@@ -392,7 +392,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 18, 2026 · v1.4.154–v1.4.156**
+### **September 18, 2026 · v1.4.154–v1.4.157**
 - **New node: Number Pick Pixaroma.** One number, picked from buttons you choose yourself. It sends a whole number or a decimal to suit whatever you wire it to.
 - **Volume on the video players.** A speaker on Save Mp4 and Save Video Pixaroma. The level you set is remembered by every Pixaroma video node.
 - **Save Mp4 Pixaroma takes a whole video, not only frames**, and it now shows the video size on the node, as does Load Video Pixaroma.
