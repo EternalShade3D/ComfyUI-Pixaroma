@@ -213,16 +213,22 @@ function placeBand(node) {
         const centre = sr.top + sr.height / 2;
         band.style.top =
           Math.round((centre - rootRect.top) / scale - BAND_H / 2) + "px";
-        // Line the band up with the WIDGET ROWS, not with our own root: MEASURED,
-        // the root sits 12px inside the rows' right edge here, so pinning the
-        // band to the root left it visibly short of every row beneath it. Pick a
-        // row that is not the one holding the band (ours is a widget row too).
+        // Line the band up with the widget rows' CONTENT edge, which is where
+        // the fields visibly stop. MEASURED: a .lg-node-widget row spans the
+        // full node width but carries 12px of padding-right, so matching the
+        // row's own rect put the band hard against the node border while every
+        // field below it stopped 12px short - reported as "on the edge, not
+        // aligned". Subtract the padding (it is CSS px, the rect is screen px,
+        // hence the * scale) rather than reaching for a child element, so this
+        // does not depend on the row's internal structure.
         const row = [...nodeEl.querySelectorAll(".lg-node-widget")]
           .find((r) => !r.contains(band));
         if (row) {
           const rr = row.getBoundingClientRect();
+          const padRight =
+            (parseFloat(getComputedStyle(row).paddingRight) || 0) * scale;
           band.style.right =
-            Math.round((rootRect.right - rr.right) / scale) + "px";
+            Math.round((rootRect.right - (rr.right - padRight)) / scale) + "px";
         } else {
           band.style.right = "0px";
         }
