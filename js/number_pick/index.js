@@ -128,7 +128,13 @@ app.registerExtension({
       // user's own size on every reload and every duplicate (convention #9).
       if (!Array.isArray(this.size)) this.size = [DEFAULT_W, bodyHeight()];
       this.size[0] = Math.max(DEFAULT_W, widthFloor(this));
-      this.size[1] = isVueNodes() ? bodyHeight(true) + 36 : bodyHeight(false);
+      // The SAME height in both renderers. The old Nodes 2.0 value
+      // (bodyHeight(true) + 36 = 80) is what left a 25px gap between the buttons
+      // and the nodepack badge: MEASURED, any value at or under 56 makes the Vue
+      // layout hug the row at a 38px root and the gap drops to 10. It is not a
+      // clamp - the layout still applies its own floor (rendering ~97) - so this
+      // does not fight it the way pinning node.size in Nodes 2.0 would.
+      this.size[1] = bodyHeight(false);
 
       queueMicrotask(() => { renderFace(this); nudgeIntoSlots(this); });
       watchRenderer();
