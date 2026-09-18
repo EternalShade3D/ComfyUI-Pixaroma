@@ -140,41 +140,26 @@ app.registerExtension({
       watchNudge(this);
     };
 
-    // ⚠️ ComfyUI's OWN add path sizes a new node differently from
-    // `LiteGraph.createNode` + `graph.add`. MEASURED in Nodes 2.0: a node added
-    // from the node search came out `[320, 100]` and rendered 130px tall with a
-    // hole under the buttons, while the same node built in code came out
-    // `[320, 28]` and rendered 97. The user spotted it by dropping one under
-    // mine - both on screen at once, obviously different heights.
+    // NO onAdded SIZE CORRECTION HERE, AND THAT IS DELIBERATE.
     //
-    // So re-assert our height once, AFTER whatever sized it. Deferred because
-    // the add path writes the size after this hook returns.
+    // There used to be one, because a node added from the node search came out
+    // [320, 100] and rendered 130px tall with a hole under the buttons. That was
+    // a SYMPTOM of bodyHeight() returning 44 in Nodes 2.0 and 28 in Classic, not
+    // a problem with the add path. Once bodyHeight became one number, a real
+    // search-box add settles to [320, 67] rendering 97 ON ITS OWN - verified by
+    // neutralising the hook and adding through the real dialog.
     //
-    // NEVER on the load path: `isGraphLoading()` is checked twice (now, and
-    // again inside the timeout) because writing node.size while a workflow opens
-    // flags an untouched file "modified" (Vue Compat #18). Adding a node is a
-    // user action and already dirties the workflow, so this write costs nothing.
-    const _added = nodeType.prototype.onAdded;
-    nodeType.prototype.onAdded = function () {
-      const r = _added?.apply(this, arguments);
-      if (!isGraphLoading()) {
-        const fix = () => {
-          if (!this.graph || isGraphLoading()) return;
-          const h = bodyHeight();
-          if (this.size[1] !== h) this.setSize([this.size[0], h]);
-        };
-        // SYNCHRONOUSLY FIRST, so the node is never PAINTED at the wrong size.
-        // The drag-to-place path creates it tall and the node follows the cursor
-        // while you position it - a deferred-only fix is visible there as "it is
-        // big and resizes smaller before I place it", which no other node does.
-        fix();
-        // ...and again on the next tick, because the search-box path writes the
-        // size AFTER this hook returns. Idempotent: the second call does nothing
-        // when the first already got it.
-        setTimeout(fix, 0);
-      }
-      return r;
-    };
+    // The hook then became the DEFECT: on the drag-to-place path the node
+    // follows the cursor while you position it, so a correction that fires while
+    // it is on screen is watched happening ("a fraction of the second after i
+    // picked to add to canvas is resizing before my eyes"). Doing it
+    // synchronously did not help, because the size it was correcting arrives
+    // after the hook returns.
+    //
+    // Nothing here writes node.size in Nodes 2.0 at all: that renderer's layout
+    // owns the height, and every attempt to hold it to a different number
+    // produced either an oscillation or a visible resize. Classic owns its own
+    // height through onResize + the draw clamp, which is where the pin lives.
 
     const _configure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
