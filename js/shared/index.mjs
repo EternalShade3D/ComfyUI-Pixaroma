@@ -43,6 +43,7 @@ export { isVueNodes, applyAdaptiveCanvasOnly, canvasBackingScale, installZoomRep
 // that builds a different UI per renderer MUST rebuild on this, or it is left
 // showing the other renderer's UI (empty body one way, doubled the other).
 export { onRendererChange } from "./renderer_switch.mjs";
+export { createSlotBand, placeSlotBand, settleSlotBand, watchSlotBand, BAND_H } from "./slot_band.mjs";
 
 export { installResizeFloor, measureRootContent } from "./resize_floor.mjs";
 

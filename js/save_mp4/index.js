@@ -3,7 +3,7 @@ import { pixApiUrl, pixAsset } from "../shared/api_url.mjs";
 import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough, installNodeAccent, registerNodeAccent,
-  onRendererChange,
+  onRendererChange, createSlotBand, placeSlotBand, settleSlotBand, watchSlotBand,
 } from "../shared/index.mjs";
 import { installFilenameTokenResolver } from "../shared/filename_tokens.mjs";
 
@@ -22,14 +22,6 @@ function injectCSS() {
   style.textContent = `
 .lg-node:has(.pix-mp4-root) .image-preview { display: none !important; }
 .pix-mp4-inner { position:absolute; inset:0; display:flex; flex-direction:column; border-radius:4px; overflow:hidden; }
-/* The size readout, floated up onto the level of the input dots so it costs the
-   node no height at all (CLAUDE.md convention #39, the LoRA Loader technique).
-   The rounded-corner clipping used to live on .pix-mp4-root; it moved to
-   .pix-mp4-inner above, which is inset:0 over the same area so the video is
-   clipped exactly as before, while the root no longer cuts this band off.
-   pointer-events:none so the real input dots underneath stay wireable. */
-.pix-mp4-band { position:absolute; height:24px; display:flex; align-items:center; justify-content:flex-end; pointer-events:none; font:22px Consolas,ui-monospace,monospace; color:#cdcdcd; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,0.6); }
-.pix-mp4-band:empty { display:none; }
 .pix-mp4-media { position:relative; flex:1 1 0; min-height:0; overflow:hidden; }
 .pix-mp4-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
 .pix-mp4-bar.is-disabled { opacity:0.40; pointer-events:none; }
@@ -160,117 +152,17 @@ function refreshBar(node) {
 // collapsed by a tab-switch rebuild or a collapse/expand — display was toggled
 // without a re-layout). Returns false if the <video> isn't mounted yet.
 // ── the size band ───────────────────────────────────────────────────────────
-// Height of .pix-mp4-band, kept in step with the stylesheet so the centring
-// maths below does not have to measure it (a measurement of a display:none
-// element reads 0, and the band is :empty -> hidden most of its life).
-const BAND_H = 24;
-// LiteGraph insets the widget pills this far from each node edge when it paints
-// them (drawNodeWidgets' `margin`). The band's right edge is lined up with that
-// same edge so it reads as one column with the rows below it - MEASURED, the
-// root is 10px inset while the pills are 15px, so a band pinned to the root
-// stuck out by 3px, which is visible.
-const CLASSIC_WIDGET_MARGIN = 15;
-// First input row's CENTRE in node-local element px, for the CLASSIC renderer:
-// TOP_PAD 4 + i*NODE_SLOT_HEIGHT + NODE_SLOT_HEIGHT/2, i=0 (Vue Compat #16).
-const CLASSIC_FIRST_SLOT_Y = 14;
+// Placement, the CSS and every measurement behind them live in
+// js/shared/slot_band.mjs (extracted when Load Video became the second
+// consumer). This node only decides WHAT the band says and WHEN.
+const BAND_OPTS = { side: "right", slot: "input", index: 0 };
 
 function getBand(node) {
   const w = node.widgets?.find((x) => x.name === "pixaroma_video_preview");
   const root = w?.element;
   if (!root || !root.isConnected) return null;
-  const band = root.querySelector(".pix-mp4-band");
+  const band = root.querySelector(".pix-slot-band");
   return band?.isConnected ? band : null;
-}
-
-/** Sit the band on the level of the first input dot.
- *
- * Writes ONLY DOM style, never node.size / properties / slots, so it can never
- * flag a workflow as modified (Vue Compat #18) and is safe to call on the load
- * path. Wrapped in try/catch so a future frontend degrades to the band sitting
- * at the top of the widget instead of throwing.
- *
- * The offset is MEASURED, not a constant. Convention #39 records that the two
- * renderers disagree by a uniform 8px because the slot run starts in a
- * different place, and that guessing it ships a visibly misaligned band. In
- * Nodes 2.0 the slots are real elements, so we align to the one we actually
- * want and no constant is needed at all; only Classic, which paints its slots
- * on canvas, falls back to the documented row maths.
- */
-function placeBand(node) {
-  const band = getBand(node);
-  if (!band) return;
-  try {
-    const rootRect = band.parentElement.getBoundingClientRect();
-    const ds = app.canvas?.ds;
-    const scale = ds?.scale || 1;
-
-    const nodeEl = band.closest(".lg-node");
-    if (nodeEl) {
-      // Nodes 2.0: align to the real dot, so this cannot drift from the slots.
-      const slotEl = nodeEl.querySelector('[class*="lg-slot--input"]');
-      if (slotEl) {
-        const sr = slotEl.getBoundingClientRect();
-        const centre = sr.top + sr.height / 2;
-        band.style.top =
-          Math.round((centre - rootRect.top) / scale - BAND_H / 2) + "px";
-        // Line the band up with the widget rows' CONTENT edge, which is where
-        // the fields visibly stop. MEASURED: a .lg-node-widget row spans the
-        // full node width but carries 12px of padding-right, so matching the
-        // row's own rect put the band hard against the node border while every
-        // field below it stopped 12px short - reported as "on the edge, not
-        // aligned". Subtract the padding (it is CSS px, the rect is screen px,
-        // hence the * scale) rather than reaching for a child element, so this
-        // does not depend on the row's internal structure.
-        const row = [...nodeEl.querySelectorAll(".lg-node-widget")]
-          .find((r) => !r.contains(band));
-        if (row) {
-          const rr = row.getBoundingClientRect();
-          const padRight =
-            (parseFloat(getComputedStyle(row).paddingRight) || 0) * scale;
-          band.style.right =
-            Math.round((rootRect.right - (rr.right - padRight)) / scale) + "px";
-        } else {
-          band.style.right = "0px";
-        }
-        return;
-      }
-    }
-
-    // Classic: the root's top in node-local px, then the documented row centre.
-    const cvs = app.canvas?.canvas;
-    if (!cvs || !ds) return;
-    const cvsRect = cvs.getBoundingClientRect();
-    const rootTopLocal =
-      (rootRect.top - cvsRect.top) / scale - ds.offset[1] - node.pos[1];
-    band.style.top =
-      Math.round(CLASSIC_FIRST_SLOT_Y - rootTopLocal - BAND_H / 2) + "px";
-    // Classic paints the pills inset CLASSIC_WIDGET_MARGIN from the node edge
-    // while this root is inset less, so pin the band to the pills' edge rather
-    // than to the root's, or it hangs a few px further right than every row
-    // beneath it.
-    const rootRightLocal =
-      (rootRect.right - cvsRect.left) / scale - ds.offset[0] - node.pos[0];
-    const wantRightLocal = node.size[0] - CLASSIC_WIDGET_MARGIN;
-    band.style.right = Math.round(Math.max(0, rootRightLocal - wantRightLocal)) + "px";
-  } catch (_e) {
-    /* leave the band where it is rather than throwing during a paint */
-  }
-}
-
-/** Re-place the band a few times while the layout settles.
- *
- * A ResizeObserver alone is NOT enough, and this was measured rather than
- * guessed: on a fresh Nodes 2.0 load the root MOVES (the slot rows above it
- * lay out) without its own size changing, so the observer never fires and the
- * band keeps the offset it computed too early - `top` stuck at -233px where a
- * settled measurement says -214px, i.e. 19px above the dot.
- *
- * A burst rather than a permanent poll: the cost is four timeouts per mount,
- * and every one of them only writes the band's own top/right.
- */
-function settleBand(node) {
-  requestAnimationFrame(() => placeBand(node));
-  for (const ms of [150, 500, 1500]) setTimeout(() => placeBand(node), ms);
 }
 
 /** Fill the band from the loaded clip, or clear it with "". */
@@ -285,7 +177,7 @@ function setBandFromVideo(node) {
   // "0:00 / 0:15" readout a few rows down, so repeating it here just made the
   // one number people actually want smaller.
   band.textContent = `${w}x${h}`;
-  settleBand(node);
+  settleSlotBand(node, band, BAND_OPTS);
 }
 
 function clearBand(node) {
@@ -468,9 +360,7 @@ app.registerExtension({
       // sitting on top of the video (convention #39). Starts EMPTY - there is
       // no size to report until something has actually been encoded, and
       // :empty hides it so a fresh node shows nothing at all.
-      const band = document.createElement("div");
-      band.className = "pix-mp4-band";
-      wrap.appendChild(band);
+      const band = createSlotBand(wrap, "right");
 
       // Inner flex layer: position:absolute inset:0 fills the wrap regardless of
       // the wrap's display, and its display:flex column (stylesheet) survives.
@@ -666,7 +556,7 @@ app.registerExtension({
         this._pixMp4ScrubMove = this._pixMp4ScrubUp = null;
         this._pixMp4RendererOff?.();
         this._pixMp4RendererOff = null;
-        this._pixMp4BandRO?.disconnect();
+        this._pixMp4BandRO?.();
         this._pixMp4BandRO = null;
         return protoRemoved?.apply(this, arguments);
       };
@@ -676,7 +566,7 @@ app.registerExtension({
       // onNodeCreated does not survive it (convention #39 / the renderer-change
       // rule). Re-place on every flip; placement is DOM style only, so this can
       // never dirty a workflow.
-      this._pixMp4RendererOff = onRendererChange(() => settleBand(node));
+      this._pixMp4RendererOff = onRendererChange(() => settleSlotBand(node, getBand(node), BAND_OPTS));
 
       // Re-place whenever the body actually changes size. Two things need this,
       // and BOTH were measured going wrong without it: on a fresh Nodes 2.0 page
@@ -686,11 +576,7 @@ app.registerExtension({
       // node.onResize is not reliable for a DOM widget (Vue Compat #13), so
       // observe the element. placeBand only writes the band's own top/right, so
       // it cannot change the root's size and cannot feed back into this.
-      try {
-        const ro = new ResizeObserver(() => placeBand(node));
-        ro.observe(wrap);
-        this._pixMp4BandRO = ro;
-      } catch (_e) { /* no ResizeObserver: the band just keeps its first place */ }
+      this._pixMp4BandRO = watchSlotBand(node, band, wrap, BAND_OPTS);
 
       refreshBar(node); // initial grayed state
 
@@ -705,7 +591,7 @@ app.registerExtension({
       // canvasOnly set adaptively: true in legacy (out of Parameters tab),
       // false in Nodes 2.0 so the <video> renders in the Vue body.
       applyAdaptiveCanvasOnly(widget);
-      settleBand(node);   // the first placement, once the body exists
+      settleSlotBand(node, getBand(node), BAND_OPTS);  // first placement
 
       // NO custom computeSize on purpose (see header). The node's minimum
       // height sums this widget's computeLayoutSize().minHeight, so the floor

@@ -1207,7 +1207,7 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Loads a video from ComfyUI's input folder and turns it into a batch of image frames you can feed into any image or video workflow. A video preview plays on the node body so you can check the clip without leaving ComfyUI.\n\nThe details you usually need are built in as separate outputs, so you do not need a second 'video info' node.",
+        body: "Loads a video from ComfyUI's input folder and turns it into a batch of image frames you can feed into any image or video workflow. A video preview plays on the node body so you can check the clip without leaving ComfyUI.\n\nThe size of the chosen video is shown on the top left of the node, beside the outputs, so you can see what you are working with at a glance. That is the size of the source file; if you set `custom_width` or `custom_height` the frames come out at that size instead, and the `width` and `height` outputs always report what actually leaves the node.\n\nThe details you usually need are built in as separate outputs, so you do not need a second 'video info' node.",
       },
       {
         heading: "How to use",

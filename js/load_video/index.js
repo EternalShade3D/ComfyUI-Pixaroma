@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import { pixApiUrl, pixAsset } from "../shared/api_url.mjs";
 import { applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough, installNodeAccent, registerNodeAccent,
+  onRendererChange, createSlotBand, settleSlotBand, watchSlotBand,
 } from "../shared/index.mjs";
 
 // Load Video Pixaroma — upload/pick a video and preview the SOURCE clip right
@@ -18,7 +19,7 @@ function injectCSS() {
   const style = document.createElement("style");
   style.id = "pix-lv-css";
   style.textContent = `
-.pix-lv-inner { position:absolute; inset:0; display:flex; flex-direction:column; }
+.pix-lv-inner { position:absolute; inset:0; display:flex; flex-direction:column; border-radius:4px; overflow:hidden; }
 .pix-lv-media { position:relative; flex:1 1 0; min-height:0; overflow:hidden; }
 .pix-lv-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
 .pix-lv-bar.is-disabled { opacity:0.40; pointer-events:none; }
@@ -122,7 +123,46 @@ function refreshBar(node) {
 
 // Point the <video> at the selected file. Guarded so re-entrant calls (configure
 // + microtask + callback) don't reload the same clip repeatedly.
+// ── the size band ───────────────────────────────────────────────────────────
+// Placement, the CSS and the measurements behind them live in
+// js/shared/slot_band.mjs. This node only decides WHAT it says and WHEN.
+// index 0 = the video_frames output, the top dot.
+const BAND_OPTS = { side: "left", slot: "output", index: 0 };
+
+function getBand(node) {
+  const w = node.widgets?.find((x) => x.name === "pixaroma_video_source");
+  const root = w?.element;
+  if (!root || !root.isConnected) return null;
+  const b = root.querySelector(".pix-slot-band");
+  return b?.isConnected ? b : null;
+}
+
+function bandVideo(node) {
+  const w = node.widgets?.find((x) => x.name === "pixaroma_video_source");
+  return w?.element?.querySelector("video") || null;
+}
+
+function setBandFromVideo(node) {
+  const band = getBand(node);
+  if (!band) return;
+  const v = bandVideo(node);
+  const w = Number(v?.videoWidth) || 0;
+  const h = Number(v?.videoHeight) || 0;
+  if (!w || !h) { band.textContent = ""; return; }
+  // The SOURCE clip's size, matching the preview. The node also has width and
+  // height OUTPUTS for what actually leaves it, which differ only when
+  // custom_width / custom_height are set (pattern #4).
+  band.textContent = `${w}x${h}`;
+  settleSlotBand(node, band, BAND_OPTS);
+}
+
+function clearBand(node) {
+  const band = getBand(node);
+  if (band) band.textContent = "";
+}
+
 function setPreview(node) {
+  clearBand(node);   // the new clip's size is unknown until it reports
   const video = getLiveVideo(node);
   if (!video) return;
   const w = node.widgets?.find((x) => x.name === "video");
@@ -252,8 +292,18 @@ app.registerExtension({
       // flex and collapses the media to 0. The flex column lives on an inner
       // absolute-filled layer ComfyUI never touches (see Save Mp4 for the verified
       // measurement), so it always fills.
+      // border-radius + overflow:hidden moved to .pix-lv-inner: the size band
+      // below is floated ABOVE this root, onto the output slot row, and an
+      // overflow:hidden here clips it away entirely. inner is inset:0 over the
+      // same box, so the video is clipped exactly as before.
       wrap.style.cssText =
-        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;";
+        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;";
+
+      // The source clip's size, on the LEFT of the slot band - this node's dead
+      // space is that side, because all seven dots are outputs on the right.
+      // It describes the clip in the player, which is deliberately the SOURCE
+      // (pattern #6), so the two always agree.
+      const band = createSlotBand(wrap, "left");
 
       const inner = document.createElement("div");
       inner.className = "pix-lv-inner";
@@ -367,6 +417,13 @@ app.registerExtension({
         (ev) => video.addEventListener(ev, () => refreshBar(node))
       );
 
+      // The only place the source's real size is known. Reading it off the media
+      // element means no Python change and nothing persisted: every re-pick and
+      // every rebuild re-fires this.
+      video.addEventListener("loadedmetadata", () => setBandFromVideo(node));
+      video.addEventListener("emptied", () => clearBand(node));
+      video.addEventListener("error", () => clearBand(node));
+
       // Scrub: click/drag to seek. Global listeners so a release outside the
       // track still ends the drag; detached in onRemoved.
       let dragging = false;
@@ -399,6 +456,10 @@ app.registerExtension({
         if (this._pixLvScrubMove) window.removeEventListener("mousemove", this._pixLvScrubMove);
         if (this._pixLvScrubUp) window.removeEventListener("mouseup", this._pixLvScrubUp);
         this._pixLvScrubMove = this._pixLvScrubUp = null;
+        this._pixLvRendererOff?.();
+        this._pixLvRendererOff = null;
+        this._pixLvBandRO?.();
+        this._pixLvBandRO = null;
         return protoRemoved?.apply(this, arguments);
       };
 
@@ -418,6 +479,15 @@ app.registerExtension({
       // no maxHeight the widget absorbs all free vertical space to fill the body
       // in both renderers. minWidth:1 so the saved node width round-trips.
       widget.computeLayoutSize = () => ({ minHeight: PREVIEW_MIN_H, minWidth: 1 });
+
+      // The band's offsets differ per renderer and the setting flips under a
+      // live node, so re-place on every flip; the observer catches a drag-resize
+      // (which moves the Classic horizontal offset); and the burst catches the
+      // root MOVING without resizing as the rows above it settle. All three
+      // write only the band's own style, so none can dirty a workflow.
+      this._pixLvRendererOff = onRendererChange(() => settleSlotBand(node, getBand(node), BAND_OPTS));
+      this._pixLvBandRO = watchSlotBand(node, band, wrap, BAND_OPTS);
+      settleSlotBand(node, band, BAND_OPTS);
 
       // Refresh the preview whenever the user changes the selected video (drop-
       // down pick, prev/next arrow). Wrap the combo's own callback.

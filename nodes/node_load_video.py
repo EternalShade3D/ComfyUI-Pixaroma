@@ -36,7 +36,8 @@ class PixaromaLoadVideo:
     DESCRIPTION = (
         "Load Video Pixaroma - upload or pick a video and decode it to a frame "
         "batch, with a built-in video preview on the node so you can watch the "
-        "source without leaving ComfyUI.\n\n"
+        "source without leaving ComfyUI. The size of the chosen video is shown "
+        "on the top left of the node, beside the outputs.\n\n"
         "Outputs: video_frames (the video as an image batch), audio, "
         "frame_count, fps, width, height, and duration - so you usually do not "
         "need a separate video-info node. Pairs with Save Mp4 Pixaroma: wire "
