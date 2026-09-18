@@ -58,7 +58,13 @@ const DEFAULT_STATE = {
 // ── tiny inline icons (currentColor) ──────────────────────────────────────
 const GEAR_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
 const SEARCH_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>';
-const LOC_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7"></circle><line x1="12" y1="2" x2="12" y2="5"></line><line x1="12" y1="19" x2="12" y2="22"></line><line x1="2" y1="12" x2="5" y2="12"></line><line x1="19" y1="12" x2="22" y2="12"></line></svg>';
+// The jump arrow, drawn by the user. Solid rather than stroked: at 13px on a node
+// row a stroked arrow thins out, and the rest of assets/icons/ui is solid too.
+// currentColor, so one string covers rest / hover / a switched-off row.
+const JUMP_SVG = '<svg viewBox="0 0 64 64" width="13" height="13" fill="currentColor">'
+  + '<path transform="translate(1.3 8.505)" d="M25.87,35.5H4.48C2.16,35.49,0,33.74,0,31.31v-14.17c0-1.98,1.9-4.24,4.01-4.25h27.57l.13-7.21c.07-3.8,3.66-6.19,7.26-5.58,2.06.35,3.27,1.61,4.66,3.02l15.97,16.25c3.13,3.18,1.8,7.7-1.13,10.45l-16.88,15.88c-1.68,1.58-4.36,1.58-6.33.71-1.73-.76-3.44-2.71-3.57-4.93-.12-1.96-.07-3.87-.09-5.86l-5.73-.1Z"/></svg>';
+// Also saved as assets/icons/ui/arrow-right.svg for anything else that wants it.
+
 
 // ── DOM helpers ───────────────────────────────────────────────────────────
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
@@ -227,6 +233,22 @@ function rowEl(node, g) {
   const name = el("span", "pix-gs-name"); name.textContent = g.title; name.title = g.label;
   row.appendChild(dot); row.appendChild(name);
   if (g.num) { const num = el("span", "pix-gs-num"); num.textContent = String(g.num); row.appendChild(num); }
+  // Jump to the group on the canvas. BEFORE the switch on purpose: the switch keeps
+  // the position people already aim at, and a mis-hit here only moves the view, while
+  // a mis-hit on the switch would mute part of the workflow.
+  // It is NOT dimmed on a switched-off row and is NOT disabled there: going to look at
+  // a group you just muted is a normal thing to do, and a dimmed control would read as
+  // disabled and be lying.
+  const jump = el("span", "pix-gs-jump");
+  jump.innerHTML = JUMP_SVG;
+  jump.title = "Show this group on the canvas";
+  jump.onpointerdown = (e) => e.stopPropagation();
+  jump.onclick = (e) => {
+    e.preventDefault(); e.stopPropagation();   // the whole row toggles; this must not
+    const b = bridge();
+    if (b && typeof b.revealGroup === "function") b.revealGroup(g.id);
+  };
+  row.appendChild(jump);
   const tog = el("span", "pix-gs-tog" + (on ? " on" : ""));
   tog.appendChild(el("span", "k"));
   tog.onpointerdown = (e) => e.stopPropagation();
@@ -377,7 +399,7 @@ function buildPickArea(node, body) {
       const nm = el("span", "pix-gs-cnm"); nm.textContent = g.title; nm.title = g.label;
       ck.appendChild(box); ck.appendChild(nm);
       if (g.num) { const num = el("span", "pix-gs-num"); num.textContent = String(g.num); ck.appendChild(num); }
-      const loc = el("span", "pix-gs-loc"); loc.innerHTML = LOC_SVG; loc.title = "Show on canvas";
+      const loc = el("span", "pix-gs-loc"); loc.innerHTML = JUMP_SVG; loc.title = "Show on canvas";
       loc.onclick = (e) => { e.preventDefault(); e.stopPropagation(); const b = bridge(); if (b && typeof b.revealGroup === "function") b.revealGroup(g.id); };
       ck.appendChild(loc);
       const dot = el("span", "pix-gs-dot"); dot.style.background = g.color || "#888";
@@ -592,6 +614,9 @@ function injectCSS() {
     ".pix-gs-cbx{width:14px;height:14px;border-radius:4px;border:1px solid rgba(255,255,255,0.3);flex:none;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;}",
     ".pix-gs-cbx.tk{background:var(--pix-acc,#f66744);border-color:var(--pix-acc,#f66744);}",
     ".pix-gs-cnm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
+    ".pix-gs-jump{color:#9a9a9a;cursor:pointer;display:flex;align-items:center;flex:none;transition:color .12s;}",
+    // deliberately NOT dimmed by .pix-gs-row.off - see rowEl
+    ".pix-gs-jump:hover{color:var(--pix-acc,#f66744);}",
     ".pix-gs-loc{color:rgba(255,255,255,0);cursor:pointer;display:flex;transition:color .12s;}",
     ".pix-gs-ck:hover .pix-gs-loc{color:rgba(255,255,255,0.4);}",
     ".pix-gs-loc:hover{color:var(--pix-acc,#f66744);}",
@@ -663,6 +688,7 @@ const HELP = {
   sections: [
     { heading: "What it does", body: "Each switch turns a whole Pixaroma Group on or off by muting or bypassing every node inside it. Flip a switch and that section of your workflow stops running, without unplugging a single wire." },
     { heading: "The switches", body: "The node body is just the switches. Click anywhere on a row to flip that group on or off - not only the small switch. An enabled row shows bright white text; a switched-off row is dimmed, so you can read the state at a glance. A small tag in the corner shows whether this one mutes or bypasses, and the colored dot and name (plus a number when two groups share a name) tell the groups apart." },
+    { heading: "Finding a group on the canvas", body: "Each row has a small arrow next to its switch. Click it and the canvas jumps to that group, which saves hunting for it in a big workflow. It works whether the group is switched on or off, so you can turn a section off and then go and look at it. Clicking the arrow only moves the view; it never flips the switch." },
     { heading: "All on / All off", body: "The two buttons at the top flip every group in the list at once, so you can kill a whole set of sections (or bring them all back) in one click instead of clicking each switch. They only touch the groups this switch lists, so if you set it to a hand-picked set, the rest are left alone.\n\nIf you have chosen a switching rule that only allows one group on at a time, turning them all on is impossible, so that button is greyed out - and hovering it tells you why. The same goes for All off when the rule always keeps one group on." },
     { heading: "Settings (the gear, or right-click)", defs: [
       ["Action", "Make this switch a Mute or a Bypass. New switches default to Bypass. For both at once, drop two switches."],

@@ -91,7 +91,7 @@ export const KEYWORDS = {
   PixaromaSwitchWH: "ab toggle size swap",
   PixaromaSwitchSource: "ab bank preset swap variant",
   PixaromaMuteSwitch: "bypass disable enable branch off skip",
-  PixaromaGroupSwitch: "group bypass mute enable disable",
+  PixaromaGroupSwitch: "group bypass mute enable disable jump go to find locate navigate show on canvas scroll to where is my group arrow",
   PixaromaSetNode: "variable wireless reroute link tidy no wires",
   PixaromaGetNode: "variable wireless reroute link tidy no wires",
   PixaromaLoopStart: "repeat iterate for each again loop",
