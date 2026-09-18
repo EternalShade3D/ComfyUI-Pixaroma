@@ -3,6 +3,7 @@ import { pixApiUrl, pixAsset } from "../shared/api_url.mjs";
 import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough, installNodeAccent, registerNodeAccent,
+  onRendererChange,
 } from "../shared/index.mjs";
 import { installFilenameTokenResolver } from "../shared/filename_tokens.mjs";
 
@@ -20,7 +21,16 @@ function injectCSS() {
   style.id = "pix-mp4-css";
   style.textContent = `
 .lg-node:has(.pix-mp4-root) .image-preview { display: none !important; }
-.pix-mp4-inner { position:absolute; inset:0; display:flex; flex-direction:column; }
+.pix-mp4-inner { position:absolute; inset:0; display:flex; flex-direction:column; border-radius:4px; overflow:hidden; }
+/* The size readout, floated up onto the level of the input dots so it costs the
+   node no height at all (CLAUDE.md convention #39, the LoRA Loader technique).
+   The rounded-corner clipping used to live on .pix-mp4-root; it moved to
+   .pix-mp4-inner above, which is inset:0 over the same area so the video is
+   clipped exactly as before, while the root no longer cuts this band off.
+   pointer-events:none so the real input dots underneath stay wireable. */
+.pix-mp4-band { position:absolute; right:2px; height:14px; display:flex; align-items:center; justify-content:flex-end; pointer-events:none; font:11px Consolas,ui-monospace,monospace; color:#cdcdcd; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,0.6); }
+.pix-mp4-band:empty { display:none; }
+.pix-mp4-band .sep { color:#5c5c5c; margin:0 5px; }
 .pix-mp4-media { position:relative; flex:1 1 0; min-height:0; overflow:hidden; }
 .pix-mp4-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
 .pix-mp4-bar.is-disabled { opacity:0.40; pointer-events:none; }
@@ -150,11 +160,108 @@ function refreshBar(node) {
 // placeholder, sync the bar, and kick a re-fit (the flex column can be left
 // collapsed by a tab-switch rebuild or a collapse/expand — display was toggled
 // without a re-layout). Returns false if the <video> isn't mounted yet.
+// ── the size band ───────────────────────────────────────────────────────────
+// Height of .pix-mp4-band, kept in step with the stylesheet so the centring
+// maths below does not have to measure it (a measurement of a display:none
+// element reads 0, and the band is :empty -> hidden most of its life).
+const BAND_H = 14;
+// First input row's CENTRE in node-local element px, for the CLASSIC renderer:
+// TOP_PAD 4 + i*NODE_SLOT_HEIGHT + NODE_SLOT_HEIGHT/2, i=0 (Vue Compat #16).
+const CLASSIC_FIRST_SLOT_Y = 14;
+
+function getBand(node) {
+  const w = node.widgets?.find((x) => x.name === "pixaroma_video_preview");
+  const root = w?.element;
+  if (!root || !root.isConnected) return null;
+  const band = root.querySelector(".pix-mp4-band");
+  return band?.isConnected ? band : null;
+}
+
+/** Sit the band on the level of the first input dot.
+ *
+ * Writes ONLY DOM style, never node.size / properties / slots, so it can never
+ * flag a workflow as modified (Vue Compat #18) and is safe to call on the load
+ * path. Wrapped in try/catch so a future frontend degrades to the band sitting
+ * at the top of the widget instead of throwing.
+ *
+ * The offset is MEASURED, not a constant. Convention #39 records that the two
+ * renderers disagree by a uniform 8px because the slot run starts in a
+ * different place, and that guessing it ships a visibly misaligned band. In
+ * Nodes 2.0 the slots are real elements, so we align to the one we actually
+ * want and no constant is needed at all; only Classic, which paints its slots
+ * on canvas, falls back to the documented row maths.
+ */
+function placeBand(node) {
+  const band = getBand(node);
+  if (!band) return;
+  try {
+    const rootRect = band.parentElement.getBoundingClientRect();
+    const ds = app.canvas?.ds;
+    const scale = ds?.scale || 1;
+
+    const nodeEl = band.closest(".lg-node");
+    if (nodeEl) {
+      // Nodes 2.0: align to the real dot, so this cannot drift from the slots.
+      const slotEl = nodeEl.querySelector('[class*="lg-slot--input"]');
+      if (slotEl) {
+        const sr = slotEl.getBoundingClientRect();
+        const centre = sr.top + sr.height / 2;
+        band.style.top =
+          Math.round((centre - rootRect.top) / scale - BAND_H / 2) + "px";
+        return;
+      }
+    }
+
+    // Classic: the root's top in node-local px, then the documented row centre.
+    const cvs = app.canvas?.canvas;
+    if (!cvs || !ds) return;
+    const cvsRect = cvs.getBoundingClientRect();
+    const rootTopLocal =
+      (rootRect.top - cvsRect.top) / scale - ds.offset[1] - node.pos[1];
+    band.style.top =
+      Math.round(CLASSIC_FIRST_SLOT_Y - rootTopLocal - BAND_H / 2) + "px";
+  } catch (_e) {
+    /* leave the band where it is rather than throwing during a paint */
+  }
+}
+
+/** Fill the band from the loaded clip, or clear it with "". */
+function setBandFromVideo(node) {
+  const band = getBand(node);
+  if (!band) return;
+  const v = getLiveVideo(node) || node._pixaromaVideo;
+  const w = Number(v?.videoWidth) || 0;
+  const h = Number(v?.videoHeight) || 0;
+  const d = Number(v?.duration);
+  if (!w || !h) { band.textContent = ""; return; }
+  // Same wording Save Video Pixaroma already uses for its own summary, so the
+  // two nodes report a clip the same way (js/save_video/index.js).
+  band.textContent = "";
+  band.appendChild(document.createTextNode(`${w}x${h}`));
+  if (Number.isFinite(d) && d > 0) {
+    const sep = document.createElement("span");
+    sep.className = "sep";
+    sep.textContent = "·";
+    band.appendChild(sep);
+    band.appendChild(document.createTextNode(`${d.toFixed(1)}s`));
+  }
+  placeBand(node);
+}
+
+function clearBand(node) {
+  const band = getBand(node);
+  if (band) band.textContent = "";
+}
+
 function applyVideoEntry(node, entry) {
   const video = getLiveVideo(node);
   if (!video || !entry || !entry.filename) return false;
   node._pixMp4Name = entry.filename.split("/").pop();
   node._pixMp4Failed = false; // a fresh load: not failed until its error event says so
+  // Clear the old clip's size straight away: the new one's dimensions are not
+  // known until its loadedmetadata fires, and showing the previous clip's
+  // numbers over a loading video would be a quiet lie.
+  clearBand(node);
   video.src = buildViewUrl(entry);
   video.style.display = "block";
   if (node._pixaromaPlaceholder?.isConnected) {
@@ -190,6 +297,9 @@ function applyVideoEntry(node, entry) {
 // #18). Leaving the entry in place is also what lets the message name the cause.
 function showClipMissing(node) {
   node._pixMp4Failed = true;
+  // No clip means no size to report. Leaving the old numbers up beside a
+  // "clip is gone" message would contradict it.
+  clearBand(node);
   const video = getLiveVideo(node) || node._pixaromaVideo;
   if (video) video.style.display = "none";
   const ph = node._pixaromaPlaceholder;
@@ -305,8 +415,22 @@ app.registerExtension({
       // root's computed display became "block" after a rebuild/collapse, media_h 0
       // while media_grow 1). The flex column lives on an inner absolute-filled
       // layer ComfyUI never touches, so it always fills.
+      // NOTE: border-radius + overflow:hidden moved to .pix-mp4-inner (see the
+      // stylesheet). They have to leave the root because the size band below is
+      // floated ABOVE the root, onto the slot row, and overflow:hidden here
+      // clipped it away entirely. inner is inset:0 over the same box, so the
+      // video's rounded clipping is unchanged.
       wrap.style.cssText =
-        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;";
+        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;";
+
+      // The size readout. FIRST child of the root on purpose: if the float is
+      // ever removed it degrades to a strip above the content rather than
+      // sitting on top of the video (convention #39). Starts EMPTY - there is
+      // no size to report until something has actually been encoded, and
+      // :empty hides it so a fresh node shows nothing at all.
+      const band = document.createElement("div");
+      band.className = "pix-mp4-band";
+      wrap.appendChild(band);
 
       // Inner flex layer: position:absolute inset:0 fills the wrap regardless of
       // the wrap's display, and its display:flex column (stylesheet) survives.
@@ -441,7 +565,13 @@ app.registerExtension({
       video.addEventListener("error", () => showClipMissing(node));
       // A load that got as far as metadata succeeded, so it is not a failure any
       // more (covers a re-run after the previous clip had gone missing).
-      video.addEventListener("loadedmetadata", () => { node._pixMp4Failed = false; });
+      video.addEventListener("loadedmetadata", () => {
+        node._pixMp4Failed = false;
+        // The only place the clip's real size is known. Reading it off the
+        // media element means no Python change and no persisted state: a tab
+        // switch re-applies the clip, which fires this again.
+        setBandFromVideo(node);
+      });
 
       // Keep the bar in sync with playback.
       ["play", "pause", "ended", "timeupdate", "loadedmetadata", "durationchange"].forEach(
@@ -494,8 +624,19 @@ app.registerExtension({
         if (this._pixMp4ScrubMove) window.removeEventListener("mousemove", this._pixMp4ScrubMove);
         if (this._pixMp4ScrubUp) window.removeEventListener("mouseup", this._pixMp4ScrubUp);
         this._pixMp4ScrubMove = this._pixMp4ScrubUp = null;
+        this._pixMp4RendererOff?.();
+        this._pixMp4RendererOff = null;
         return protoRemoved?.apply(this, arguments);
       };
+
+      // The band's offset differs between the renderers, and the setting flips
+      // under a live node with no reload, so a one-time placement in
+      // onNodeCreated does not survive it (convention #39 / the renderer-change
+      // rule). Re-place on every flip; placement is DOM style only, so this can
+      // never dirty a workflow.
+      this._pixMp4RendererOff = onRendererChange(() => {
+        requestAnimationFrame(() => placeBand(node));
+      });
 
       refreshBar(node); // initial grayed state
 

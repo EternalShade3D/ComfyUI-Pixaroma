@@ -22,6 +22,7 @@ from ._video_encode_helpers import (
 # save nodes use (Save Image, Save Video, Preview Image), so the four cannot
 # drift on what a filename may contain. See the fix note in save().
 from ._save_helpers import _safe_prefix
+from ._video_input_helpers import resolve_sources
 
 # Honour ComfyUI's global --disable-metadata flag (same as SaveImage). Wrapped so
 # the node still imports on a build that lacks it.
@@ -56,16 +57,29 @@ def _next_mp4_counter(folder, prefix):
 
 
 class PixaromaSaveMp4:
-    """Encode an IMAGE batch (and optional AUDIO) to a single H.264 mp4.
+    """Encode an IMAGE batch OR a core VIDEO (and optional AUDIO) to one H.264 mp4.
     save_mode=save writes to ComfyUI's output/ folder; save_mode=preview
     writes to ComfyUI's temp/ folder (auto-cleared on restart) so users can
     iterate without cluttering output/. Deliberately few knobs and opinionated
     defaults; Save Video Pixaroma is the one with folders and naming."""
 
     DESCRIPTION = (
-        "Save Mp4 Pixaroma - encode an IMAGE batch (and optional AUDIO) to a "
+        "Save Mp4 Pixaroma - encode a batch of frames, or a whole video, to a "
         "single H.264 mp4 with a built-in <video> preview right on the node "
-        "body so you can watch the result without leaving ComfyUI.\n\n"
+        "body so you can watch the result without leaving ComfyUI. Once it has "
+        "made a video, its size and length are shown on the top right of the "
+        "node.\n\n"
+        "There are two inputs because ComfyUI has two different kinds of video "
+        "on the wire, and you only ever need one of them. Use video_frames for "
+        "a batch of frames, such as the video_frames output of Load Video "
+        "Pixaroma or the frames straight out of a video model. Use video for "
+        "ComfyUI's own video type, such as the output of its Load Video node; "
+        "the sound stored in that video comes along with it. If both are "
+        "connected, video_frames is the one that is used and the node says so "
+        "in the console.\n\n"
+        "A video wired into the video input is decoded and encoded again, so "
+        "re-saving one costs a little quality, and a long clip is held in "
+        "memory while it is read. Feeding frames avoids both.\n\n"
         "Frames stream straight to ffmpeg's stdin (no temp PNG files); audio "
         "is muxed in as AAC 192k. Pairs with AudioReact Pixaroma but works "
         "with any source that produces frames + AUDIO.\n\n"
@@ -91,7 +105,6 @@ class PixaromaSaveMp4:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "video_frames": ("IMAGE", {"tooltip": "Frame batch to encode. Wire Audio React Pixaroma's video_frames output here."}),
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0,
                     "tooltip": "Output frame rate. Wire Audio React Pixaroma's fps output here so it always matches what produced the frames."}),
                 "filename_prefix": ("STRING", {"default": "Video",
@@ -102,7 +115,17 @@ class PixaromaSaveMp4:
                     "tooltip": "Off (default): keep every video frame; the audio simply ends where it ends. On: end the video exactly at the audio's length (ffmpeg -shortest), for when the audio is the master (e.g. with Audio React). On can drop the last frame or two when the audio is slightly shorter than the video."}),
             },
             "optional": {
-                "audio": ("AUDIO", {"tooltip": "Optional audio track to mux into the mp4 as AAC 192k. Connect Audio React Pixaroma's audio output here."}),
+                # video_frames used to be REQUIRED. It is optional now so that a
+                # graph can wire `video` instead and still be a valid prompt -
+                # with it required, wiring only `video` fails validation with
+                # "Required input is missing: video_frames" and ComfyUI DROPS
+                # this output node while still reporting success (#19). Moving
+                # required -> optional is safe in that direction: an older saved
+                # prompt still carries the field, and it is a SLOT not a widget,
+                # so widgets_values does not shift. Listed first so the input dot
+                # stays at the top of the column where it has always been.
+                "video_frames": ("IMAGE", {"tooltip": "Frame batch to encode. Wire Audio React Pixaroma's video_frames output here. Use this or video, whichever kind you have; if both are wired this one is used."}),
+                "audio": ("AUDIO", {"tooltip": "Optional audio track to mux into the mp4 as AAC 192k. Connect Audio React Pixaroma's audio output here. A video wired into the video input brings its own sound, which this input overrides."}),
                 # ⚠️ OPTIONAL, not required, and NOT for stylistic reasons.
                 # A new REQUIRED input silently breaks every API-format prompt
                 # captured before it existed: ComfyUI logs "Required input is
@@ -115,6 +138,11 @@ class PixaromaSaveMp4:
                 # positional-compatible with nodes saved before it existed.
                 "audio_fade_ms": ("INT", {"default": 0, "min": 0, "max": 2000, "step": 10,
                     "tooltip": "Fade the sound in over this many milliseconds at the very start. 0 is off. AI video models often start their audio at full level in a single step, which is heard as a click; about 120 helps a lot and is too short to notice as a fade. Leave it at 0 when you are just re-saving a video whose sound you do not want altered."}),
+                # Appended LAST, per #19: widgets_values is positional, so a new
+                # entry goes on the end. (A slot does not occupy a widgets_values
+                # place at all, but the rule is cheap to keep and the next input
+                # added here might be a widget.)
+                "video": ("VIDEO", {"tooltip": "A video straight from ComfyUI's own video type, such as its Load Video node, instead of a batch of frames. Its sound comes along with it. Wire this or video_frames, never both."}),
             },
             # The workflow + prompt, embedded into the mp4 so dragging it back into
             # ComfyUI restores the graph (read by the drag-a-video loader).
@@ -126,13 +154,43 @@ class PixaromaSaveMp4:
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma/🖼️ Image"
 
-    def save(self, video_frames, fps, filename_prefix, save_mode, trim_to_audio,
-             audio_fade_ms=0, audio=None, prompt=None, extra_pnginfo=None):
+    # Every parameter carries a default, INCLUDING the ones that are still
+    # `required` in INPUT_TYPES, purely so the positional order never changes:
+    # video_frames has to be defaultable now that it is optional, and Python
+    # forbids a defaulted parameter before a bare one. ComfyUI calls this with
+    # **kwargs and always sends the required fields, so the defaults here are
+    # only ever reached by a direct call (the harnesses in D:\Claude Tests call
+    # it positionally, and keeping the order lets them go on doing so).
+    def save(self, video_frames=None, fps=24.0, filename_prefix="Video",
+             save_mode="save", trim_to_audio=False,
+             audio_fade_ms=0, audio=None, video=None,
+             prompt=None, extra_pnginfo=None):
         crf = self._CRF
         pix_fmt = self._PIX_FMT
         fps_int = max(1, int(round(float(fps))))
 
-        frames = video_frames
+        # Two inputs, because ComfyUI has two unrelated things called a video on
+        # the wire and a node offering only one of them cannot be connected by
+        # half its users (first-last-frame.md #1). Resolved BEFORE anything
+        # claims a file, so a refusal here cannot orphan a 0-byte mp4, exactly
+        # like the frame validation below (pattern #14).
+        #
+        # The whole access sits inside the resolver rather than being poked at
+        # here: `video` is OPTIONAL and therefore NOT type-guaranteed - an
+        # any-type passthrough can deliver a list, a tensor or a string - and
+        # pattern #13 was earned by a guard that lived OUTSIDE its try and
+        # crashed the run after the output file had been claimed.
+        frames, video_audio, source_note = resolve_sources(
+            video_frames, video, "Save Mp4",
+        )
+        if source_note:
+            print(source_note)
+        # A wired `audio` input wins over the sound that came in with a video:
+        # it is the more specific thing the user asked for, and it is how they
+        # replace a clip's sound track.
+        if audio is None and video_audio is not None:
+            audio = video_audio
+
         # Empty batch, wrong channel count and odd dimensions all refuse here,
         # BEFORE anything claims a file, so a refusal cannot orphan a 0-byte mp4
         # (pattern #14). Shared with Save Video Pixaroma so the two cannot drift.

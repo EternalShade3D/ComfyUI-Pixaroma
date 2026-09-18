@@ -1057,17 +1057,29 @@ const HELP = {
 
   "PixaromaSaveMp4": {
     title: "Save Mp4 Pixaroma",
-    tagline: "Encode a frame batch to an H.264 mp4 with optional audio, and watch it play right on the node.",
+    tagline: "Encode a frame batch or a whole video to an H.264 mp4 with optional audio, and watch it play right on the node.",
     sections: [
       {
         heading: "What it does",
-        body: "Takes an IMAGE batch and an optional AUDIO track and encodes them to a single mp4 using ffmpeg. A video preview plays on the node body so you can check the result without leaving ComfyUI. Audio is combined in the same pass.\n\nThe ffmpeg binary is auto-located: if imageio-ffmpeg is installed its bundled exe is used; otherwise ffmpeg on your system PATH is tried.",
+        body: "Takes a batch of frames, or a whole video, plus an optional AUDIO track, and encodes them to a single mp4 using ffmpeg. A video preview plays on the node body so you can check the result without leaving ComfyUI. Audio is combined in the same pass.\n\nOnce it has made a video, the size and length are shown on the top right of the node, on the same line as the first input. Before the first run there is nothing to show, so it stays empty.\n\nThe ffmpeg binary is auto-located: if imageio-ffmpeg is installed its bundled exe is used; otherwise ffmpeg on your system PATH is tried.",
+      },
+      {
+        heading: "Frames or a video: which input to use",
+        body: "ComfyUI has two different kinds of video on the wire, and this node accepts both, so there are two inputs. You only ever need one of them.",
+        defs: [
+          ["video_frames", "A batch of frames. This is what Load Video Pixaroma's `video_frames` output gives you, and what a video model produces."],
+          ["video", "ComfyUI's own video type, such as the output of its Load Video node. The sound stored in the video comes along with it, so you do not need to wire `audio` as well."],
+        ],
+      },
+      {
+        heading: "What using the video input costs",
+        body: "A video wired into `video` is unpacked into frames and then encoded again, so re-saving a video loses a little quality, and a long clip is held in memory while it is read. If you already have the frames, wiring them in avoids both.\n\nIf you connect both inputs, `video_frames` is the one used, and the node prints a line saying so rather than quietly picking for you. A trimmed video (from ComfyUI's Video Slice) saves the trimmed part, not the whole file.",
       },
       {
         heading: "How to use",
         bullets: [
-          "Wire an IMAGE batch into `video_frames` and the frame rate into `fps` (from AudioReact, connect its `video_frames` and `fps`).",
-          "Optionally connect an `audio` output to add a soundtrack.",
+          "Wire an IMAGE batch into `video_frames` and the frame rate into `fps` (from AudioReact, connect its `video_frames` and `fps`). Or wire a video into `video` instead.",
+          "Optionally connect an `audio` output to add a soundtrack. It overrides the sound that came in with a video, which is how you replace a clip's audio.",
           "Set `save_mode` to `preview` (temp, auto-cleared on restart) or `save` (kept in output).",
           "The preview remembers the last clip, so it comes back when you switch workflows. If that file has since been deleted, moved, or cleared from temp by a restart, the node tells you instead of showing a black player: just run again.",
           "Set `filename_prefix` to name the file; a 5-digit counter is added automatically. You can print another node's value into the name with a token like `%Seed Pixaroma.seed%`.",
