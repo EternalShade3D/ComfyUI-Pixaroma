@@ -46,11 +46,18 @@ const CHIP_GAP = 4;
 // width - so the row has to reserve that much itself or the gear slides under
 // the label once the body is lifted onto the slot band.
 const VUE_LABEL_RESERVE = 44;
-// How far above its natural place the body has to rise for the button row to
-// CENTRE on the output band. Measured: the band is 20px at y426, the row is
-// 26px starting at y456, so the row centre is 33px below the band centre, and
-// marginBottom = -(blockHeight + this) closes it. Re-measure if the row height
-// or the widget wrapper's padding changes.
+// How far the button row has to rise to CENTRE on the output-slot band.
+//
+// The SAME 13px in both renderers, because it is the same 26px row against the
+// same 20px band, and both were measured independently: in Classic the dot sits
+// at node-local y14 (TOP_PAD 4 + 20/2, Vue Compat #16) while the row centred at
+// y27; in Nodes 2.0 the band is 20px at y426 and the row centre sat 33px below
+// its centre, which is this 13 plus the block's own 20.
+//
+// Classic applies it as a negative margin-top on the row (so the body CLOSES UP
+// and the node gets shorter by the same amount); Nodes 2.0 folds it into the
+// block-nudge's negative margin-bottom. Re-measure if ROW_H or the widget
+// wrapper's padding changes.
 const NUDGE_EXTRA_LIFT = 13;
 
 // Intrinsic width of one chip, measured at the REAL font rather than guessed
@@ -94,13 +101,13 @@ export function minWidthFor(values, vue = isVueNodes()) {
   const margins = vue ? 36 : ROOT_MARGIN * 2 + BODY_PAD * 2;
   return Math.ceil(margins + chips + ROW_GAP + GEAR_W + reserve);
 }
-// Classic hands the DOM widget `node.size[1] - widgets_start_y - 2*margin`, so
-// the node has to be that much taller than the content. Measured, not guessed.
-const CLASSIC_CHROME = 22;
-
 export function bodyHeight(vue = isVueNodes()) {
-  const content = ROW_H + BODY_PAD + 2;
-  return vue ? ROW_H + BODY_PAD * 2 + 6 : content + CLASSIC_CHROME;
+  // Classic: MEASURED, not derived. Once the row is lifted onto the dot line
+  // the chip always occupies node-local 2.7..25.3 whatever the node height is
+  // (swept 56 down to 28, the chip never moved and the alignment held at 0), so
+  // 28 is the row with even margins above and below it. Anything larger is just
+  // empty body under the buttons.
+  return vue ? ROW_H + BODY_PAD * 2 + 6 : ROW_H + 2;
 }
 
 export function injectCSS() {
@@ -118,7 +125,13 @@ export function injectCSS() {
      the empty left half of it, which puts them ~20px higher. It reserves the
      right for the "value" label the node paints there. */
   .${ROOT_CLASS}.classic{ padding-top:2px; }
-  .${ROOT_CLASS}.classic .pix-npick-row{ padding-right:${LABEL_RESERVE}px; }
+  .${ROOT_CLASS}.classic .pix-npick-row{
+    padding-right:${LABEL_RESERVE}px;
+    /* Lift onto the output-dot line. margin, NOT position:relative: a
+       relative shift would leave a 13px hole at the bottom of the body,
+       where a negative margin takes the height with it. */
+    margin-top:-${NUDGE_EXTRA_LIFT}px;
+  }
   /* Nodes 2.0: same idea, different number - the body is lifted onto the
      output band by the block-nudge, so it must leave the "value" label room. */
   .${ROOT_CLASS}:not(.classic) .pix-npick-row{ padding-right:${VUE_LABEL_RESERVE}px; }
