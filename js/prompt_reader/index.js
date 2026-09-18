@@ -839,7 +839,25 @@ function setupNode(node) {
   // the node larger and the textarea fills the extra space, but the
   // measurement remains stable so the node can also be shrunk back down.
   const READOUT_MIN_H = 80;
+  // ⚠️ A measurement taken before the node is laid out is GARBAGE (CLAUDE.md
+  // convention #39 C2, and the same guard XY Plot + Load Images from Folder
+  // carry since v1.4.145). Here it goes the OTHER way from those two: an
+  // unlaid-out child reports offsetHeight 0, so the total comes back short and
+  // the node was sized 80px too small - MEASURED flipping 396 <-> 316 across
+  // repeated opens of a busy workflow, 316 being exactly the readout's 80px
+  // missing. It only shows on a BUSY canvas, because a slower layout pass
+  // widens the window in which this can be called early; the node measured
+  // perfectly stable on its own.
+  //
+  // So refuse to answer until the root has a real width and hand back the last
+  // good value. As a getMinHeight FLOOR that means core simply keeps whatever
+  // the workflow saved, and the true floor applies on the next call.
+  const LAYOUT_READY_W = 100;
+  let _lastGoodHeight = 0;
   function measureHeight() {
+    if (!root.isConnected || root.offsetWidth < LAYOUT_READY_W) {
+      return _lastGoodHeight || 300;
+    }
     let total = 0;
     let visible = 0;
     for (const child of root.children) {
@@ -855,7 +873,12 @@ function setupNode(node) {
     }
     const padding = 16;
     const gaps = Math.max(0, visible - 1) * 8;
-    return total + padding + gaps;
+    const out = total + padding + gaps;
+    // A total this small means the children have not laid out either, even
+    // though the root has a width. Same reasoning as the width gate above.
+    if (out < READOUT_MIN_H) return _lastGoodHeight || 300;
+    _lastGoodHeight = out;
+    return out;
   }
 
   installCanvasZoomPassthrough(root);
