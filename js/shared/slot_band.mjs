@@ -113,15 +113,25 @@ export function placeSlotBand(node, band, opts = {}) {
       }
       const row = otherWidgetRow(nodeEl, band);
       if (row) {
-        const rr = row.getBoundingClientRect();
-        const cs = getComputedStyle(row);
+        // Measure the row's LAST element child, which is the grid holding the
+        // label and the control - that IS what the eye reads as the column.
+        //
+        // NOT the row's own padding box, which was the first attempt and is
+        // wrong on the left: MEASURED, `padding-left` is 0 and the row's FIRST
+        // child is a 12px dot column, so "row left + padding-left" lands on the
+        // node's edge while every label starts 12px further in. It looked
+        // correct in a check that compared the band against the same padding
+        // box it had been aligned to - the two agreed while the thing on screen
+        // was visibly out. On the right the two happen to coincide (padding
+        // 12px, dot column on the other side), which is why only the left
+        // showed it.
+        const content = row.lastElementChild || row;
+        const cr = content.getBoundingClientRect();
         if (side === "left") {
-          const pad = (parseFloat(cs.paddingLeft) || 0) * scale;
-          band.style.left = Math.round(((rr.left + pad) - rootRect.left) / scale) + "px";
+          band.style.left = Math.round((cr.left - rootRect.left) / scale) + "px";
           band.style.right = "auto";
         } else {
-          const pad = (parseFloat(cs.paddingRight) || 0) * scale;
-          band.style.right = Math.round((rootRect.right - (rr.right - pad)) / scale) + "px";
+          band.style.right = Math.round((rootRect.right - cr.right) / scale) + "px";
           band.style.left = "auto";
         }
       }
