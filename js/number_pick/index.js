@@ -11,7 +11,7 @@ import { registerNodeHelp } from "../shared/help.mjs";
 import { registerNodeSettings, repaintAccent } from "../shared/node_settings.mjs";
 import { CLASS, HIDDEN_INPUT, MIN_W, DEFAULT_W, injectedState, readState } from "./core.mjs";
 import { buildFace, renderFace, destroyFace, bodyHeight, minWidthFor, injectCSS,
-  nudgeIntoSlots, watchNudge, unwatchNudge } from "./ui.mjs";
+  nudgeIntoSlots, trimToContent, watchNudge, unwatchNudge } from "./ui.mjs";
 import { openSettingsPanel, closeSettingsPanelFor } from "./settings.mjs";
 import { ensureSlotType, refreshOut } from "./adopt.mjs";
 import { NUMBER_PICK_HELP } from "./help.mjs";
@@ -135,7 +135,7 @@ app.registerExtension({
       // reloads, which flips a workflow dirty and back.
       if (!isVueNodes()) this.size[1] = bodyHeight();
 
-      queueMicrotask(() => { renderFace(this); nudgeIntoSlots(this); });
+      queueMicrotask(() => { renderFace(this); nudgeIntoSlots(this); trimToContent(this); });
       watchRenderer();
       watchNudge(this);
     };
@@ -170,7 +170,7 @@ app.registerExtension({
       // the slot type is deliberately NOT corrected here. A node saved before
       // the type existed is corrected on its first real connection instead.
       renderFace(this);
-      queueMicrotask(() => { renderFace(this); nudgeIntoSlots(this); });
+      queueMicrotask(() => { renderFace(this); nudgeIntoSlots(this); trimToContent(this); });
       watchRenderer();
       watchNudge(this);
       return r;

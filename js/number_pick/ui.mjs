@@ -338,6 +338,50 @@ export function nudgeIntoSlots(node) {
   } catch { return false; }
 }
 
+/**
+ * Take back the space the lift freed, when the layout did not.
+ *
+ * ⚠️ THIS EXISTS BECAUSE THE LIFT IS A RACE, and the race is invisible on a fast
+ * machine. `nudgeIntoSlots` pulls the slot block out of flow with a negative
+ * margin, which makes the widget body 33px shorter. If the Vue layout measures
+ * AFTER that, the node comes out right. If it measures BEFORE, the node keeps
+ * the taller height forever and nothing re-measures it.
+ *
+ * MEASURED on two machines running byte-identical code, same server, fresh node:
+ *
+ *   |            | node.size[1] | widget body | rendered |
+ *   | this one   |      67      |     38      |    97    |  (layout measured after)
+ *   | the user's |     100      |     71      |   130    |  (layout measured before)
+ *
+ * Their body is 71 where its own content is 38 (padding 6 + row 26 + padding 6),
+ * i.e. exactly the 33px of lift, still reserved. A high-DPI display (theirs is
+ * dpr 1.65) shifts layout timing enough to lose the race every single time,
+ * which is why they saw it on every new node and I never saw it once.
+ *
+ * So do not depend on the timing: compare the body against its OWN content and
+ * hand back the difference. Idempotent - once corrected the excess is 0, so the
+ * poll that calls this settles immediately and never oscillates.
+ */
+export function trimToContent(node) {
+  if (!isVueNodes()) return false;              // Classic pins its height itself
+  try {
+    const root = node?._pixNpRoot;
+    const row = node?._pixNpRow;
+    if (!root?.isConnected || !row) return false;
+    const cs = getComputedStyle(root);
+    const want = row.offsetHeight
+      + (parseFloat(cs.paddingTop) || 0)
+      + (parseFloat(cs.paddingBottom) || 0);
+    if (!want) return false;                    // not laid out yet
+    const excess = Math.round(root.offsetHeight - want);
+    // A small tolerance: sub-pixel rounding on a fractional-DPI display must not
+    // make this nibble a pixel off the node on every poll tick.
+    if (excess < 2) return false;
+    node.setSize?.([node.size[0], Math.max(1, node.size[1] - excess)]);
+    return true;
+  } catch { return false; }
+}
+
 const _nudgeTimers = new WeakMap();
 
 /**
@@ -352,6 +396,9 @@ export function watchNudge(node) {
     if (!node.graph) { unwatchNudge(node); return; }
     if (!isVueNodes()) return;                  // Classic uses widgets_start_y
     nudgeIntoSlots(node);
+    // ...and reclaim the space the lift freed if the layout measured too early.
+    // Both calls are idempotent, so the steady state is two cheap reads.
+    trimToContent(node);
   }, 350);
   _nudgeTimers.set(node, t);
 }
