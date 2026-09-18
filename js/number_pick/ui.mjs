@@ -27,10 +27,61 @@ let _cssDone = false;
 export const SLOT_BAND = 20;
 // Room for the right-aligned "value" label plus its dot. MEASURED the way
 // duration.md #14 says to, not guessed: at LiteGraph's 14px node font "value"
-// is 34px wide and the dot sits ~18px outboard, so 54 leaves a small gap.
+// is 33px wide and LiteGraph right-aligns it 18px in from the node edge, so the
+// label occupies `size[0]-51 .. size[0]-18`. Our content ends at
+// `size[0] - (ROOT_MARGIN + BODY_PAD + LABEL_RESERVE)`, so 44 leaves a ~9px gap.
+//
+// It was 54 first, which put a 19px gap there and read as the gear being
+// stranded in the middle of the row ("the settings can be closer to the value").
 // Re-measure with ctx.measureText at LiteGraph.NODE_TEXT_SIZE if the output is
 // ever renamed.
-export const LABEL_RESERVE = 54;
+export const LABEL_RESERVE = 44;
+// Classic insets the DOM widget by this much on each side of the node.
+const ROOT_MARGIN = 10;
+const GEAR_W = 16;
+const ROW_GAP = 5;
+const CHIP_GAP = 4;
+
+// Intrinsic width of one chip, measured at the REAL font rather than guessed
+// from character count - "1" is 20px and "0.25" is 36px, and a node sized on an
+// average would clip the long ones. Cached per label; the set of labels on a
+// canvas is tiny.
+const _chipW = new Map();
+let _probe = null;
+function chipWidth(label) {
+  if (_chipW.has(label)) return _chipW.get(label);
+  if (!_probe) {
+    _probe = document.createElement("span");
+    _probe.style.cssText =
+      "position:absolute;left:-9999px;top:-9999px;visibility:hidden;white-space:nowrap;"
+      + "font:12px 'Segoe UI',sans-serif;padding:4px 6px;border:1px solid;box-sizing:border-box;";
+    document.body.appendChild(_probe);
+  }
+  _probe.textContent = label;
+  const w = Math.ceil(_probe.getBoundingClientRect().width) || 26;
+  _chipW.set(label, w);
+  return w;
+}
+
+/**
+ * The narrowest this node can be and still show every button in full.
+ *
+ * This is what stops the row clipping: the chips never wrap (a second row would
+ * fall out of a one-row node) and they never shrink below their text, so the
+ * NODE has to be wide enough instead. Reported as "15" disappearing under the
+ * gear.
+ */
+export function minWidthFor(values, vue = isVueNodes()) {
+  const labels = (values || []).map((v) => fmt(v));
+  let chips = labels.reduce((sum, l) => sum + chipWidth(l), 0);
+  chips += Math.max(0, labels.length - 1) * CHIP_GAP;
+  // In Nodes 2.0 the body has its own chrome and there is no slot band to
+  // reserve, but the widget root is narrower than the node - so ask for a
+  // little more rather than less.
+  const reserve = vue ? 24 : LABEL_RESERVE;
+  const margins = vue ? 44 : ROOT_MARGIN * 2 + BODY_PAD * 2;
+  return Math.ceil(margins + chips + ROW_GAP + GEAR_W + reserve);
+}
 // Classic hands the DOM widget `node.size[1] - widgets_start_y - 2*margin`, so
 // the node has to be that much taller than the content. Measured, not guessed.
 const CLASSIC_CHROME = 22;
@@ -58,17 +109,22 @@ export function injectCSS() {
   .${ROOT_CLASS}.classic .pix-npick-row{ padding-right:${LABEL_RESERVE}px; }
   .pix-npick-row{ display:flex; align-items:center; gap:5px; min-height:${ROW_H}px; }
 
-  /* NEVER wrap. Wrapping pushed a second row of buttons out of the node as soon
-     as it was dragged narrow (duration.md #13, learned there first). The
-     buttons shrink together instead, which is what someone deliberately making
-     the node smaller is asking for; overflow:hidden is the backstop for a list
-     long enough that even that runs out. */
+  /* NEVER wrap: a second row would fall straight out of a one-row node
+     (duration.md #13, learned there first). The buttons do not shrink either -
+     the NODE's minimum width grows to fit them instead (minWidthFor), because a
+     button squeezed under the gear is the defect this replaced.
+     overflow:hidden stays only as a backstop for a node somehow narrower than
+     its own minimum. */
   .pix-npick-chips{
     display:flex; gap:4px; flex:1 1 auto; min-width:0;
     flex-wrap:nowrap; overflow:hidden;
   }
   .pix-npick-chip{
-    flex:1 1 auto; min-width:26px; box-sizing:border-box;
+    /* flex-shrink 0: a chip must NEVER be narrower than its number. The node's
+       own minimum width grows to fit them instead (minWidthFor), which is what
+       stops the last one sliding under the gear. They still GROW to share a
+       wider node. */
+    flex:1 0 auto; box-sizing:border-box;
     background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14);
     border-radius:4px; color:rgba(255,255,255,0.72); font-size:12px;
     padding:4px 6px; cursor:pointer; text-align:center; line-height:1.1;
@@ -83,7 +139,7 @@ export function injectCSS() {
      is drawn by the OS, so it is a different shape and baseline on every
      platform. currentColor so it follows the row rather than drifting. */
   .pix-npick-gear{
-    flex:none; width:16px; height:16px; padding:0; margin:0; line-height:0;
+    flex:0 0 auto; width:16px; height:16px; padding:0; margin:0; line-height:0;
     background:none; border:none; cursor:pointer; color:#bbb;
   }
   .pix-npick-gear::before{
@@ -112,7 +168,12 @@ export function buildFace(node, openPanel) {
 
   const widget = node.addDOMWidget(WIDGET_NAME, WIDGET_TYPE, root, {
     serialize: false,
+    // min AND max the same: the body is one row and nothing in it fills spare
+    // space, so letting the widget stretch just gives a big empty box. Both are
+    // CONSTANTS, never a live measurement, so they cannot grow a node on load
+    // (convention #39 E).
     getMinHeight: () => bodyHeight(),
+    getMaxHeight: () => bodyHeight(),
   });
   // BOTH flags, they are not the same one: options.serialize keeps the widget
   // out of the PROMPT, widget.serialize (top level) keeps it out of the saved

@@ -9,8 +9,8 @@ import { isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import { registerNodeSettings, repaintAccent } from "../shared/node_settings.mjs";
-import { CLASS, HIDDEN_INPUT, MIN_W, DEFAULT_W, injectedState } from "./core.mjs";
-import { buildFace, renderFace, destroyFace, bodyHeight, injectCSS } from "./ui.mjs";
+import { CLASS, HIDDEN_INPUT, MIN_W, DEFAULT_W, injectedState, readState } from "./core.mjs";
+import { buildFace, renderFace, destroyFace, bodyHeight, minWidthFor, injectCSS } from "./ui.mjs";
 import { openSettingsPanel, closeSettingsPanelFor } from "./settings.mjs";
 import { ensureSlotType, refreshOut } from "./adopt.mjs";
 import { NUMBER_PICK_HELP } from "./help.mjs";
@@ -56,10 +56,24 @@ function watchRenderer() {
   }, 1000);
 }
 
+// The narrowest this node may be: never below MIN_W, and never narrower than
+// its own buttons need. Read live from the state, so adding buttons in the
+// settings raises the floor immediately.
+function widthFloor(node) {
+  try { return Math.max(MIN_W, minWidthFor(readState(node).values)); }
+  catch { return MIN_W; }
+}
+
 function openPanel(node) {
   openSettingsPanel(node, () => {
     renderFace(node);
     repaintAccent(node);
+    // Adding buttons must WIDEN the node, or the new ones have nowhere to go and
+    // the last one ends up under the gear. This is a user action (they are in
+    // the settings panel), never the load path, so writing node.size here cannot
+    // flag a clean workflow modified.
+    const floor = widthFloor(node);
+    if (node.size?.[0] < floor) node.setSize?.([floor, node.size[1]]);
     node.setDirtyCanvas?.(true, true);
     app.graph?.setDirtyCanvas?.(true, true);
   });
@@ -105,14 +119,14 @@ app.registerExtension({
       // MIN_W and never this.size[0]: computeSize()[0] is also the drag MINIMUM,
       // so returning the live width would ratchet the floor up on every widen.
       if (!isVueNodes()) {
-        this.computeSize = function () { return [MIN_W, bodyHeight(false)]; };
+        this.computeSize = function () { return [widthFloor(this), bodyHeight(false)]; };
       }
 
       // Fresh size, SYNCHRONOUSLY. configure() runs right after onNodeCreated
       // and restores a saved size, so a deferred write here would clobber the
       // user's own size on every reload and every duplicate (convention #9).
       if (!Array.isArray(this.size)) this.size = [DEFAULT_W, bodyHeight()];
-      this.size[0] = DEFAULT_W;
+      this.size[0] = Math.max(DEFAULT_W, widthFloor(this));
       this.size[1] = isVueNodes() ? bodyHeight(true) + 36 : bodyHeight(false);
 
       queueMicrotask(() => renderFace(this));
@@ -165,9 +179,13 @@ app.registerExtension({
     const _resize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (!isVueNodes()) {
-        if (size[0] < MIN_W) size[0] = MIN_W;
-        // A FLOOR, not a fixed height, so the node can still be made taller.
-        if (size[1] < bodyHeight(false)) size[1] = bodyHeight(false);
+        const floor = widthFloor(this);
+        if (size[0] < floor) size[0] = floor;
+        // PINNED, not floored. The body is one row and nothing in it fills
+        // spare space, so a taller node is a big empty box - reported as
+        // "it let me do this which dont make sense". Width is still free
+        // above the floor, because a wider node spreads the buttons out.
+        size[1] = bodyHeight(false);
       }
       return _resize?.apply(this, arguments);
     };
@@ -177,7 +195,16 @@ app.registerExtension({
       // The load gate matters: a draw hook runs on the FIRST frame of a load,
       // earlier than any other clamp, so an ungated write here is the one place
       // that can rewrite a saved node.size on a clean open (convention #7).
-      if (!isVueNodes() && !isGraphLoading() && this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (!isVueNodes() && !isGraphLoading()) {
+        const floor = widthFloor(this);
+        if (this.size[0] < floor) this.size[0] = floor;
+        // Convention #7: onResize does not fire for every path, so the pin
+        // needs this belt too - a node that came back from Nodes 2.0 carries
+        // that renderer's taller layout height and nothing else would reset it.
+        // Both writes are idempotent after the first frame.
+        const h = bodyHeight(false);
+        if (this.size[1] !== h) this.size[1] = h;
+      }
       return _draw?.apply(this, arguments);
     };
 
