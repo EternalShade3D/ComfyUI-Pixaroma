@@ -392,10 +392,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 18, 2026 · v1.4.154–v1.4.155**
-- **Save Mp4 Pixaroma now takes a whole video, not only frames.** There is a new `video` input for ComfyUI's own video type, so you can re-save a clip without unpacking it first. Its sound comes along with it, and it keeps its own frame rate, so it comes out the same length it went in.
-- **Save Mp4 and Load Video Pixaroma show the video size on the node.** Save Mp4 shows the size of what it made, on the top right; Load Video shows the size of the clip you picked, on the top left. Neither makes the node any taller, and nothing is shown until there is something to show.
-- **Fixed: Inpaint Crop Pixaroma showed no picture when another node sat in between.** With a Switch, a Reroute or an Image Info between your image and Inpaint Crop, the thumbnail stayed empty and the mask editor opened blank. It now follows the wire back to the picture, and with a Switch it follows the branch you actually have switched on.
+### **September 18, 2026 · v1.4.154–v1.4.156**
+- **Save Mp4 Pixaroma takes a whole video now, not only frames.** Wire ComfyUI's own video type straight in; its sound and frame rate come with it.
+- **Save Mp4 and Load Video Pixaroma show the video size on the node**, top right and top left, without making the node any taller.
+- **Fixed: Inpaint Crop Pixaroma was blank when another node sat in between.** It now follows the wire back to the picture, through a Switch or a Reroute.
+- **Group Switch Pixaroma: an arrow on each row jumps the canvas to that group**, whether the group is switched on or off.
 
 ### **September 17, 2026 · v1.4.152–v1.4.153**
 - **Fixed: middle-mouse drag did not move the canvas over a node's picture or text box.** Now it does, over 3D views too.
