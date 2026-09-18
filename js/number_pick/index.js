@@ -158,11 +158,20 @@ app.registerExtension({
     nodeType.prototype.onAdded = function () {
       const r = _added?.apply(this, arguments);
       if (!isGraphLoading()) {
-        setTimeout(() => {
+        const fix = () => {
           if (!this.graph || isGraphLoading()) return;
           const h = bodyHeight();
           if (this.size[1] !== h) this.setSize([this.size[0], h]);
-        }, 0);
+        };
+        // SYNCHRONOUSLY FIRST, so the node is never PAINTED at the wrong size.
+        // The drag-to-place path creates it tall and the node follows the cursor
+        // while you position it - a deferred-only fix is visible there as "it is
+        // big and resizes smaller before I place it", which no other node does.
+        fix();
+        // ...and again on the next tick, because the search-box path writes the
+        // size AFTER this hook returns. Idempotent: the second call does nothing
+        // when the first already got it.
+        setTimeout(fix, 0);
       }
       return r;
     };
