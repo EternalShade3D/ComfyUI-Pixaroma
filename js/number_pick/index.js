@@ -140,6 +140,33 @@ app.registerExtension({
       watchNudge(this);
     };
 
+    // ⚠️ ComfyUI's OWN add path sizes a new node differently from
+    // `LiteGraph.createNode` + `graph.add`. MEASURED in Nodes 2.0: a node added
+    // from the node search came out `[320, 100]` and rendered 130px tall with a
+    // hole under the buttons, while the same node built in code came out
+    // `[320, 28]` and rendered 97. The user spotted it by dropping one under
+    // mine - both on screen at once, obviously different heights.
+    //
+    // So re-assert our height once, AFTER whatever sized it. Deferred because
+    // the add path writes the size after this hook returns.
+    //
+    // NEVER on the load path: `isGraphLoading()` is checked twice (now, and
+    // again inside the timeout) because writing node.size while a workflow opens
+    // flags an untouched file "modified" (Vue Compat #18). Adding a node is a
+    // user action and already dirties the workflow, so this write costs nothing.
+    const _added = nodeType.prototype.onAdded;
+    nodeType.prototype.onAdded = function () {
+      const r = _added?.apply(this, arguments);
+      if (!isGraphLoading()) {
+        setTimeout(() => {
+          if (!this.graph || isGraphLoading()) return;
+          const h = bodyHeight();
+          if (this.size[1] !== h) this.setSize([this.size[0], h]);
+        }, 0);
+      }
+      return r;
+    };
+
     const _configure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
       const r = _configure?.apply(this, arguments);
