@@ -1106,6 +1106,7 @@ const HELP = {
           ["Play and Pause", "Starts or stops the preview. Clicking the picture itself does the same."],
           ["The scrub bar", "Click or drag anywhere along it to jump to that point in the clip."],
           ["Download", "Saves the finished mp4 to your computer."],
+          ["The speaker", "Sets how loud the preview plays. Point at it and a slider comes out. Click the speaker to silence it and click again to bring it back at the same level. Whatever level you leave it at is used by every Pixaroma video node from then on, in every workflow, so you only set it once. It belongs to you rather than to the workflow, so sharing a workflow does not carry your volume to anyone else, and changing it never marks a workflow as edited."],
           ["Fullscreen", "Expands the video preview to fill your screen."],
         ],
       },
@@ -1174,6 +1175,7 @@ const HELP = {
           ["Folder", "Opens the save folder in your file explorer. The window can appear on the taskbar rather than in front."],
           ["Save and Preview", "Save writes to your folder on every run. Preview plays the video on the node but writes to ComfyUI's temp folder instead, which is cleared on restart, so you can try things without filling your folder."],
           ["Play, the scrub bar, and fullscreen", "Under the video. Clicking the picture plays and pauses too, and you can drag anywhere along the bar to move through the clip."],
+          ["The speaker", "Sets how loud the preview plays. Point at it and a slider comes out. Click the speaker to silence it and click again to bring it back at the same level. Whatever level you leave it at is used by every Pixaroma video node from then on, in every workflow, so you only set it once. It belongs to you rather than to the workflow, so sharing a workflow does not carry your volume to anyone else, and changing it never marks a workflow as edited."],
         ],
       },
       {

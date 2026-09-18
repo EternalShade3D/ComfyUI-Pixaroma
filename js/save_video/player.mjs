@@ -8,6 +8,7 @@
 //     seeking under a bare cursor forever (save-mp4 pattern #11, convention #20)
 
 import { pixApiUrl, pixAsset } from "../shared/api_url.mjs";
+import { buildVolumeControl, applyVideoVolume } from "../shared/video_volume.mjs";
 
 const UI_ICON = "icons/ui/";
 export const PLACEHOLDER_DEFAULT = "Run the workflow to save and play the video here";
@@ -177,12 +178,17 @@ export function buildPlayer(node) {
   // fullscreen.svg in the shared set and inventing one would look different
   fsIco.style.setProperty("--ico", `url(${pixAsset(UI_ICON + "fit.svg")})`);
   fsBtn.appendChild(fsIco);
+  // Volume sits between the scrub and fullscreen, where every media player
+  // puts it. The level is a shared preference, not node state - see
+  // js/shared/video_volume.mjs for why.
+  const volume = buildVolumeControl(video);
   bar.appendChild(playBtn);
   bar.appendChild(time);
   bar.appendChild(scrub);
+  bar.appendChild(volume.group);
   bar.appendChild(fsBtn);
 
-  const ui = { media, video, vph, bar, playBtn, playIco, time, scrub, fill, handle, fsBtn };
+  const ui = { media, video, vph, bar, playBtn, playIco, time, scrub, fill, handle, fsBtn, volume };
   node._pixSvUI = Object.assign(node._pixSvUI || {}, ui);
 
   const togglePlay = () => {
@@ -208,6 +214,10 @@ export function buildPlayer(node) {
   }
   video.addEventListener("loadedmetadata", () => {
     node._pixSvFailed = false; // proven good
+    // Re-assert the stored level on every clip. Cheap and idempotent, and it
+    // covers any path where the element was replaced without rebuilding the
+    // bar - which is exactly what a Vue tab switch can do (Vue Compat #2).
+    applyVideoVolume(video);
     // Mirror showClipMissing rather than only half-undoing it. applyVideoEntry
     // is otherwise the ONLY thing that can un-hide the element, so any future
     // route to "failed, then succeeded without a fresh apply" would leave a

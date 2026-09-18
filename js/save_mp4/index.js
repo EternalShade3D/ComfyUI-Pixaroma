@@ -6,6 +6,7 @@ import { applyAdaptiveCanvasOnly,
   onRendererChange, createSlotBand, placeSlotBand, settleSlotBand, watchSlotBand,
 } from "../shared/index.mjs";
 import { installFilenameTokenResolver } from "../shared/filename_tokens.mjs";
+import { buildVolumeControl, applyVideoVolume } from "../shared/video_volume.mjs";
 
 // Nodes 2.0 renders its own native .image-preview panel because this node
 // emits ui.images (for the Media Assets refresh, Preview Image Pattern #14).
@@ -436,6 +437,12 @@ app.registerExtension({
       dlBtn.appendChild(dlIco);
       bar.appendChild(dlBtn);
 
+      // Volume, between the scrub and fullscreen. The exact same control Save
+      // Video uses, and the level they share is a preference of the person, not
+      // of the workflow - see js/shared/video_volume.mjs.
+      const volume = buildVolumeControl(video);
+      bar.appendChild(volume.group);
+
       const fsBtn = document.createElement("button");
       fsBtn.className = "pix-mp4-btn";
       fsBtn.title = "Fullscreen";
@@ -497,6 +504,9 @@ app.registerExtension({
       // more (covers a re-run after the previous clip had gone missing).
       video.addEventListener("loadedmetadata", () => {
         node._pixMp4Failed = false;
+        // Re-assert the stored level on every clip, for the same reason Save
+        // Video does: a Vue tab switch can replace the element under us.
+        applyVideoVolume(video);
         // The only place the clip's real size is known. Reading it off the
         // media element means no Python change and no persisted state: a tab
         // switch re-applies the clip, which fires this again.
