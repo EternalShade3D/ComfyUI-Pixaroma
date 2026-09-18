@@ -238,6 +238,52 @@ function nodeImageURL(src, slot) {
   return null;
 }
 
+// ── ETERNAL: keep the thumbnail in step with its source ─────────────────────
+// Upstream resolves the wire on connect, on execute and on configure, but a
+// Switch flipping banks, a re-join and a loader swapping file all happen with NO
+// connection change and NO executed event, so the body thumbnail lagged until a
+// wire was touched (upstream acknowledges this: "flipping a switch does not tell
+// the node to redraw", next on their list for this file). Two triggers fix it
+// without touching the resolver: the switch announces its flip, and the resolved
+// source is fingerprinted so any other change is noticed too.
+
+/** Is `id` anywhere in this node's upstream image chain (through every router)?
+ *  The switch that flipped can sit several hops back (switch -> join -> image
+ *  info -> loader), not just directly above. */
+function sourceChainHasId(node, id) {
+  const graph = node.graph;
+  if (!graph) return false;
+  let input = inputByName(node, "image");
+  for (let hop = 0; hop < MAX_SOURCE_HOPS; hop++) {
+    if (!input || input.link == null) return false;
+    const link = linkById(graph, input.link);
+    const src = link && graph.getNodeById(link.origin_id);
+    if (!src) return false;
+    if (src.id === id) return true;
+    input = routedInput(src, link.origin_slot);
+  }
+  return false;
+}
+
+/** What the resolved source is holding right now, WITHOUT the cache buster:
+ *  the same picture must fingerprint the same twice, or every tick would look
+ *  like a change and the node would redraw forever. */
+function sourceHeldKey(src, slot) {
+  if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
+    const w = (src.widgets || []).find((x) => x.name === "image");
+    if (w && typeof w.value === "string") return w.value;
+  }
+  const img = (src.imgs || [])[slot] || (src.imgs || [])[0];
+  if (!img) return "";
+  return typeof img === "string" ? img : (img.src || "");
+}
+
+function sourceFingerprint(node) {
+  const found = resolveImageSource(node);
+  if (!found || !found.node) return "";
+  return `${found.node.id}|${found.slot}|${sourceHeldKey(found.node, found.slot)}`;
+}
+
 // Load Image Pixaroma resizes in PYTHON, at execute time, so the resized pixels
 // do not exist in the browser at all before a run - the editor can only open the
 // file on disk. That is fine for a plain loader, but it is NOT harmless here:
@@ -519,6 +565,36 @@ app.registerExtension({
     };
     api.addEventListener("executed", onExec);
 
+    // ETERNAL: a source change the browser is never told about. The switch
+    // announces a bank flip; anything else (a loader swapping file, a re-join)
+    // is caught by fingerprinting the resolved source, so the thumbnail follows
+    // without a wire being touched. 800ms is the same order as the loaders' own
+    // poll and costs one string compare per tick.
+    const onSwitchChanged = (event) => {
+      const changed = event?.detail?.id;
+      if (changed == null) return;
+      if (!sourceChainHasId(node, changed)) return;
+      node._pixInpaintSourceURL = null;
+      node._pixInpaintRefresh?.();
+    };
+    document.addEventListener("pix-switch-source-changed", onSwitchChanged);
+
+    node._pixInpaintFp = sourceFingerprint(node);
+    node._pixInpaintFpTimer = setInterval(() => {
+      if (!node.graph) {
+        try { clearInterval(node._pixInpaintFpTimer); } catch (e) {}
+        node._pixInpaintFpTimer = null;
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) return;
+      let fp = "";
+      try { fp = sourceFingerprint(node); } catch (e) { return; }
+      if (fp === node._pixInpaintFp) return;
+      node._pixInpaintFp = fp;
+      node._pixInpaintSourceURL = null;
+      node._pixInpaintRefresh?.();
+    }, 800);
+
     // wrap (don't clobber) any existing handler from the prototype / another ext;
     // forward all args, then run our image-input source-preview logic.
     const origConnChange = node.onConnectionsChange;
@@ -539,6 +615,9 @@ app.registerExtension({
       try { parts?.resizeObserver?.disconnect(); } catch (e) {}
       origRemoved?.call(node);
       try { api.removeEventListener("executed", onExec); } catch {}
+      try { document.removeEventListener("pix-switch-source-changed", onSwitchChanged); } catch {}
+      try { clearInterval(node._pixInpaintFpTimer); } catch (e) {}
+      node._pixInpaintFpTimer = null;
     };
   },
 });

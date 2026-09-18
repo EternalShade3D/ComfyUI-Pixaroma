@@ -194,6 +194,12 @@ function buildControls(node) {
       refresh();
       updateOutputLabels(node);
       node.graph?.setDirtyCanvas?.(true, true);
+      // ETERNAL: tell readers downstream that the live bank changed. This node
+      // holds no picture of its own, so a reader (e.g. Inpaint Crop's thumbnail)
+      // cannot notice the flip on its own: without this it kept showing the other
+      // bank until a wire was touched. Upstream knows the thumbnail can lag and
+      // has "make the flip redraw" on its own list - this is that redraw.
+      try { document.dispatchEvent(new CustomEvent("pix-switch-source-changed", { detail: { id: node.id } })); } catch (err) { }
     });
   }
   for (const b of [btnConn, btnStrict]) {
