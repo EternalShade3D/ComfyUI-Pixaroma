@@ -137,6 +137,107 @@ function parseAnnotatedImageValue(value) {
   };
 }
 
+// ── finding the node that actually holds the picture ────────────────────────
+// The image wired in is often NOT the node holding the pixels: people put a
+// Switch, a Reroute or an Image Info in between. Resolving only the IMMEDIATE
+// upstream meant the node found nothing, so the thumbnail never updated and the
+// editor opened empty - reported 2026-09-17 with two recordings, against the
+// real "Load Image works but these other nodes do not" case.
+//
+// THE RULE THAT MATTERS: when we cannot tell which branch is live, return
+// NOTHING rather than guess. Painting a mask on the wrong picture is worse than
+// painting on none, because nothing tells the user it happened.
+const MAX_SOURCE_HOPS = 12;
+
+// Core nodes that pass a picture straight through, naming the input that
+// carries it. Needed only where the generic "exactly one wired input" rule
+// below cannot tell an image apart from its siblings.
+const PASSTHROUGH_INPUT = {
+  JoinImageWithAlpha: "image",
+  SplitImageWithAlpha: "image",
+  PixaromaImageInfo: "image_info",
+};
+
+function inputByName(node, name) {
+  return (node.inputs || []).find((i) => i.name === name) || null;
+}
+
+// graph.links is an object on older frontends and a Map on newer ones
+// (Vue Compat #3), so every read has to try both.
+function linkById(graph, id) {
+  if (id == null || !graph) return null;
+  let l = graph.links?.[id];
+  if (!l && typeof graph.links?.get === "function") l = graph.links.get(id);
+  return l || null;
+}
+
+/** The input of `node` that carries the live picture, or null if unknowable.
+ *
+ * `fromSlot` is the OUTPUT slot we arrived through, which is what tells a
+ * multi-row router which row we are on.
+ */
+function routedInput(node, fromSlot) {
+  const cls = node.comfyClass || node.type || "";
+
+  // Our own routers record which branch is live, so ASK them. Guessing here
+  // would silently pick another wire's picture.
+  if (cls === "PixaromaSwitch") {
+    const idx = node.properties?.switchState?.activeIndex;
+    return idx ? inputByName(node, "input_" + idx) : null;
+  }
+  if (cls === "PixaromaSwitchSource") {
+    // a_1..a_16 / b_1..b_16, one row per OUTPUT slot; the toggle picks the bank.
+    const bank = node.properties?.switchSourceState?.active === "B" ? "b" : "a";
+    return inputByName(node, bank + "_" + ((fromSlot | 0) + 1));
+  }
+
+  const named = PASSTHROUGH_INPUT[cls];
+  if (named) {
+    const hit = inputByName(node, named);
+    if (hit) return hit;
+  }
+
+  // Anything else, including core Reroute and other packs' routers: follow it
+  // only when exactly ONE input is wired. One wire is unambiguous; several is a
+  // guess, and we do not guess.
+  const wired = (node.inputs || []).filter((i) => i.link != null);
+  return wired.length === 1 ? wired[0] : null;
+}
+
+/** Walk back to the node that really holds the pixels. `{node, slot}` or null. */
+function resolveImageSource(node) {
+  const graph = node.graph;
+  if (!graph) return null;
+  let input = inputByName(node, "image");
+  const seen = new Set();
+  for (let hop = 0; hop < MAX_SOURCE_HOPS; hop++) {
+    if (!input || input.link == null) return null;
+    const link = linkById(graph, input.link);
+    const src = link && graph.getNodeById(link.origin_id);
+    if (!src) return null;
+    if (seen.has(src.id)) return null;      // a cycle: stop rather than spin
+    seen.add(src.id);
+    if (nodeImageURL(src, link.origin_slot)) return { node: src, slot: link.origin_slot };
+    input = routedInput(src, link.origin_slot);
+  }
+  return null;                              // deeper than the cap: give up quietly
+}
+
+/** The picture THIS node is holding, or null if it holds none. */
+function nodeImageURL(src, slot) {
+  if (!src) return null;
+  if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
+    const w = (src.widgets || []).find((x) => x.name === "image");
+    if (w && w.value) return buildSourceURL(parseAnnotatedImageValue(w.value), true);
+  }
+  if (src.imgs && src.imgs.length > 0) {
+    const img = src.imgs[slot] || src.imgs[0];
+    if (typeof img === "string") return img;
+    if (img && img.src) return img.src;
+  }
+  return null;
+}
+
 // Load Image Pixaroma resizes in PYTHON, at execute time, so the resized pixels
 // do not exist in the browser at all before a run - the editor can only open the
 // file on disk. That is fine for a plain loader, but it is NOT harmless here:
@@ -149,12 +250,10 @@ function parseAnnotatedImageValue(value) {
 // always the original. Rather than guess a resized preview we cannot produce,
 // say plainly which picture is on screen.
 function upstreamResizeNote(node) {
-  const graph = node.graph;
-  const input = (node.inputs || []).find((i) => i.name === "image");
-  if (!input || input.link == null || !graph) return "";
-  let link = graph.links?.[input.link];
-  if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
-  const src = link && graph.getNodeById(link.origin_id);
+  // Through the same walk as the picture itself, so the note still appears when
+  // the resizing loader sits behind a Switch or a Reroute.
+  const found = resolveImageSource(node);
+  const src = found && found.node;
   if (!src || src.comfyClass !== "PixaromaLoadImage") return "";
   let st = null;
   try {
@@ -175,23 +274,10 @@ function getUpstreamImageURL(node) {
   // only a fallback for generative upstreams whose pixels exist solely as the
   // temp PNG the Python node saved on the last run. (Without this order,
   // swapping the Load Image file showed the PREVIOUS run's image until re-run.)
-  const input = (node.inputs || []).find((i) => i.name === "image");
-  const graph = node.graph;
-  if (input && input.link != null && graph) {
-    let link = graph.links?.[input.link];
-    if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
-    const src = link && graph.getNodeById(link.origin_id);
-    if (src) {
-      if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
-        const w = (src.widgets || []).find((x) => x.name === "image");
-        if (w && w.value) return buildSourceURL(parseAnnotatedImageValue(w.value), true);
-      }
-      if (src.imgs && src.imgs.length > 0) {
-        const img = src.imgs[link.origin_slot] || src.imgs[0];
-        if (typeof img === "string") return img;
-        if (img && img.src) return img.src;
-      }
-    }
+  const found = resolveImageSource(node);
+  if (found) {
+    const url = nodeImageURL(found.node, found.slot);
+    if (url) return url;
   }
   // fallback: source PNG from the last Python execute (generative upstreams, or
   // before a live preview exists), and the paste / drag-drop / restored case.
