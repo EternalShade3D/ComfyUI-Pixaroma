@@ -382,6 +382,28 @@ export function trimToContent(node) {
   } catch { return false; }
 }
 
+/**
+ * Land the lift and the trim on the FIRST laid-out frame, not on the next poll
+ * tick.
+ *
+ * The 350ms poll is the self-heal for a Vue re-render; it is far too slow for a
+ * node being PLACED, which follows the cursor while you position it - the user
+ * watched the correction happen: "before adding to canvas it resize on my mouse
+ * and by the time is added is already good size". A burst gets it done before
+ * the first frame anyone sees.
+ *
+ * Same shape as the house helper `js/shared/slot_band.mjs::settleSlotBand`, and
+ * for the same measured reason: a ResizeObserver is not enough, because the node
+ * MOVES and re-lays out without its own box resizing, so the observer never
+ * fires. Both calls are idempotent, so the extra attempts cost two reads each.
+ */
+export function settleNudge(node) {
+  if (!isVueNodes()) return;
+  const once = () => { nudgeIntoSlots(node); trimToContent(node); };
+  try { requestAnimationFrame(once); } catch { once(); }
+  for (const ms of [0, 16, 48, 120, 300, 700]) setTimeout(once, ms);
+}
+
 const _nudgeTimers = new WeakMap();
 
 /**
