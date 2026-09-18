@@ -101,13 +101,30 @@ export function minWidthFor(values, vue = isVueNodes()) {
   const margins = vue ? 36 : ROOT_MARGIN * 2 + BODY_PAD * 2;
   return Math.ceil(margins + chips + ROW_GAP + GEAR_W + reserve);
 }
-export function bodyHeight(vue = isVueNodes()) {
-  // Classic: MEASURED, not derived. Once the row is lifted onto the dot line
-  // the chip always occupies node-local 2.7..25.3 whatever the node height is
-  // (swept 56 down to 28, the chip never moved and the alignment held at 0), so
-  // 28 is the row with even margins above and below it. Anything larger is just
-  // empty body under the buttons.
-  return vue ? ROW_H + BODY_PAD * 2 + 6 : ROW_H + 2;
+/**
+ * The node body: the button row with even margins, and nothing else. The SAME
+ * number in both renderers, which is the point of it.
+ *
+ * MEASURED, not derived. Once the row is lifted onto the dot line the chip
+ * always occupies node-local 2.7..25.3 whatever the node height is (swept 56
+ * down to 28: the chip never moved and the alignment held at 0), so 28 is the
+ * row with even margins above and below it.
+ *
+ * ⚠️ Nodes 2.0 reads this when the WIDGET IS BUILT and never again. It used to
+ * return `ROW_H + BODY_PAD*2 + 6` = 44 for that renderer, which is what made the
+ * node render 112px tall with a 25px hole between the buttons and the nodepack
+ * badge ("now looks huge"). At 28 it renders 97 with a 10px gap, fresh AND after
+ * any number of reloads.
+ *
+ * That is the correction to a WRONG conclusion recorded in #10 - that the Vue
+ * layout floored the node and nothing could move it. It was reached by patching
+ * `getMinHeight` on the LIVE widget, which genuinely does nothing, because the
+ * value is baked at construction. Patching a live object is NOT a test of a
+ * value that is read once when the object is made: change it at source and
+ * reload the page.
+ */
+export function bodyHeight() {
+  return ROW_H + 2;
 }
 
 export function injectCSS() {

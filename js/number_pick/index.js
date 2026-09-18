@@ -120,7 +120,7 @@ app.registerExtension({
       // MIN_W and never this.size[0]: computeSize()[0] is also the drag MINIMUM,
       // so returning the live width would ratchet the floor up on every widen.
       if (!isVueNodes()) {
-        this.computeSize = function () { return [widthFloor(this), bodyHeight(false)]; };
+        this.computeSize = function () { return [widthFloor(this), bodyHeight()]; };
       }
 
       // Fresh size, SYNCHRONOUSLY. configure() runs right after onNodeCreated
@@ -128,13 +128,12 @@ app.registerExtension({
       // user's own size on every reload and every duplicate (convention #9).
       if (!Array.isArray(this.size)) this.size = [DEFAULT_W, bodyHeight()];
       this.size[0] = Math.max(DEFAULT_W, widthFloor(this));
-      // The SAME height in both renderers. The old Nodes 2.0 value
-      // (bodyHeight(true) + 36 = 80) is what left a 25px gap between the buttons
-      // and the nodepack badge: MEASURED, any value at or under 56 makes the Vue
-      // layout hug the row at a 38px root and the gap drops to 10. It is not a
-      // clamp - the layout still applies its own floor (rendering ~97) - so this
-      // does not fight it the way pinning node.size in Nodes 2.0 would.
-      this.size[1] = bodyHeight(false);
+      // CLASSIC ONLY. There we own the height and pin it (see onResize). In
+      // Nodes 2.0 the Vue layout owns it and settles on its own value from the
+      // widget's height; writing our own number there just gives it something
+      // to disagree with, and node.size then oscillated 28 <-> 66 across
+      // reloads, which flips a workflow dirty and back.
+      if (!isVueNodes()) this.size[1] = bodyHeight();
 
       queueMicrotask(() => { renderFace(this); nudgeIntoSlots(this); });
       watchRenderer();
@@ -194,7 +193,7 @@ app.registerExtension({
         // spare space, so a taller node is a big empty box - reported as
         // "it let me do this which dont make sense". Width is still free
         // above the floor, because a wider node spreads the buttons out.
-        size[1] = bodyHeight(false);
+        size[1] = bodyHeight();
       }
       return _resize?.apply(this, arguments);
     };
@@ -211,7 +210,7 @@ app.registerExtension({
         // needs this belt too - a node that came back from Nodes 2.0 carries
         // that renderer's taller layout height and nothing else would reset it.
         // Both writes are idempotent after the first frame.
-        const h = bodyHeight(false);
+        const h = bodyHeight();
         if (this.size[1] !== h) this.size[1] = h;
       }
       return _draw?.apply(this, arguments);
