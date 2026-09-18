@@ -10,7 +10,8 @@ import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import { registerNodeSettings, repaintAccent } from "../shared/node_settings.mjs";
 import { CLASS, HIDDEN_INPUT, MIN_W, DEFAULT_W, injectedState, readState } from "./core.mjs";
-import { buildFace, renderFace, destroyFace, bodyHeight, minWidthFor, injectCSS } from "./ui.mjs";
+import { buildFace, renderFace, destroyFace, bodyHeight, minWidthFor, injectCSS,
+  nudgeIntoSlots, watchNudge, unwatchNudge } from "./ui.mjs";
 import { openSettingsPanel, closeSettingsPanelFor } from "./settings.mjs";
 import { ensureSlotType, refreshOut } from "./adopt.mjs";
 import { NUMBER_PICK_HELP } from "./help.mjs";
@@ -52,7 +53,7 @@ function watchRenderer() {
     _lastVue = now;
     // renderFace re-asserts the `classic` class itself, so this only has to
     // fix the slot lift and ask for a repaint.
-    for (const n of nodes) { liftOverSlots(n); renderFace(n); }
+    for (const n of nodes) { liftOverSlots(n); renderFace(n); nudgeIntoSlots(n); }
   }, 1000);
 }
 
@@ -129,8 +130,9 @@ app.registerExtension({
       this.size[0] = Math.max(DEFAULT_W, widthFloor(this));
       this.size[1] = isVueNodes() ? bodyHeight(true) + 36 : bodyHeight(false);
 
-      queueMicrotask(() => renderFace(this));
+      queueMicrotask(() => { renderFace(this); nudgeIntoSlots(this); });
       watchRenderer();
+      watchNudge(this);
     };
 
     const _configure = nodeType.prototype.onConfigure;
@@ -142,8 +144,9 @@ app.registerExtension({
       // the slot type is deliberately NOT corrected here. A node saved before
       // the type existed is corrected on its first real connection instead.
       renderFace(this);
-      queueMicrotask(() => renderFace(this));
+      queueMicrotask(() => { renderFace(this); nudgeIntoSlots(this); });
       watchRenderer();
+      watchNudge(this);
       return r;
     };
 
@@ -211,6 +214,7 @@ app.registerExtension({
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeSettingsPanelFor(this);
+      unwatchNudge(this);
       destroyFace(this);
       return _removed?.apply(this, arguments);
     };

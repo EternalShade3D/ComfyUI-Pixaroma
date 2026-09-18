@@ -41,6 +41,17 @@ const ROOT_MARGIN = 10;
 const GEAR_W = 16;
 const ROW_GAP = 5;
 const CHIP_GAP = 4;
+// Nodes 2.0: the "value" slot ELEMENT is 50px wide and sits hard against the
+// node's right edge (measured), while a widget row spans nearly the full node
+// width - so the row has to reserve that much itself or the gear slides under
+// the label once the body is lifted onto the slot band.
+const VUE_LABEL_RESERVE = 44;
+// How far above its natural place the body has to rise for the button row to
+// CENTRE on the output band. Measured: the band is 20px at y426, the row is
+// 26px starting at y456, so the row centre is 33px below the band centre, and
+// marginBottom = -(blockHeight + this) closes it. Re-measure if the row height
+// or the widget wrapper's padding changes.
+const NUDGE_EXTRA_LIFT = 13;
 
 // Intrinsic width of one chip, measured at the REAL font rather than guessed
 // from character count - "1" is 20px and "0.25" is 36px, and a node sized on an
@@ -75,11 +86,12 @@ export function minWidthFor(values, vue = isVueNodes()) {
   const labels = (values || []).map((v) => fmt(v));
   let chips = labels.reduce((sum, l) => sum + chipWidth(l), 0);
   chips += Math.max(0, labels.length - 1) * CHIP_GAP;
-  // In Nodes 2.0 the body has its own chrome and there is no slot band to
-  // reserve, but the widget root is narrower than the node - so ask for a
-  // little more rather than less.
-  const reserve = vue ? 24 : LABEL_RESERVE;
-  const margins = vue ? 44 : ROOT_MARGIN * 2 + BODY_PAD * 2;
+  // Both renderers reserve the label column, they just inset the row by
+  // different amounts. MEASURED in Nodes 2.0 on a 320-wide node: the row spans
+  // 284px starting 18px in, so 18 each side; Classic insets the widget root 10
+  // and the root pads 6.
+  const reserve = vue ? VUE_LABEL_RESERVE : LABEL_RESERVE;
+  const margins = vue ? 36 : ROOT_MARGIN * 2 + BODY_PAD * 2;
   return Math.ceil(margins + chips + ROW_GAP + GEAR_W + reserve);
 }
 // Classic hands the DOM widget `node.size[1] - widgets_start_y - 2*margin`, so
@@ -107,6 +119,9 @@ export function injectCSS() {
      right for the "value" label the node paints there. */
   .${ROOT_CLASS}.classic{ padding-top:2px; }
   .${ROOT_CLASS}.classic .pix-npick-row{ padding-right:${LABEL_RESERVE}px; }
+  /* Nodes 2.0: same idea, different number - the body is lifted onto the
+     output band by the block-nudge, so it must leave the "value" label room. */
+  .${ROOT_CLASS}:not(.classic) .pix-npick-row{ padding-right:${VUE_LABEL_RESERVE}px; }
   .pix-npick-row{ display:flex; align-items:center; gap:5px; min-height:${ROW_H}px; }
 
   /* NEVER wrap: a second row would fall straight out of a one-row node
@@ -244,4 +259,75 @@ export function destroyFace(node) {
   node._pixNpFloorOff = null;
   node._pixNpRoot = null;
   node._pixNpRow = null;
+}
+
+// ── Nodes 2.0: lift the body onto the output-slot band ─────────────────────
+//
+// Classic gets this free (`widgets_start_y`), but Nodes 2.0 renders the dots in
+// their own block, so the button row lands BELOW the "value" label with a gap -
+// reported as "the output is not aligned with the numbers on nodes 2".
+//
+// This is the Load Image Mini / Sliders BLOCK-NUDGE, applied unchanged: pull the
+// output-slot block out of flow with a negative bottom margin and the widget
+// body rises to overlap it. See `.claude/patterns/load-image-mini.md` for the
+// full recipe and why each part is the way it is.
+//
+// It writes ONLY inline DOM style on a Vue-managed element - never node.size,
+// properties or slots - so it cannot dirty a saved workflow (Vue Compat #18),
+// and the whole thing is wrapped so a future frontend just degrades to the row
+// sitting below the dots, which still works.
+
+function slotBlockOf(node) {
+  const root = node?._pixNpRoot;
+  const el = root?.closest?.(".lg-node");
+  const slot = el?.querySelector?.(".lg-slot--output");
+  return slot?.parentElement?.parentElement || null;
+}
+
+/**
+ * Already lifted? Read our OWN inline negative margin, NEVER a geometric
+ * "did the row reach the block" test: the wrapper's padding means it never
+ * reaches it exactly, so a geometric check never settles and the poll
+ * re-nudges every tick, which flickers. Vue REPLACES the element on re-render
+ * (fresh element, no inline style), so this reads false again exactly when a
+ * re-apply is needed.
+ */
+function isNudged(block) {
+  return !!block && String(block.style.marginBottom || "").startsWith("-");
+}
+
+export function nudgeIntoSlots(node) {
+  if (!isVueNodes()) return false;
+  try {
+    const block = slotBlockOf(node);
+    if (!block || isNudged(block)) return false;
+    const h = block.offsetHeight;
+    if (!h) return false;                       // not laid out yet, try next tick
+    block.style.marginBottom = `${-(h + NUDGE_EXTRA_LIFT)}px`;
+    return true;
+  } catch { return false; }
+}
+
+const _nudgeTimers = new WeakMap();
+
+/**
+ * 350ms self-heal poll. A ResizeObserver is not enough: Vue replaces the node
+ * element on re-render, which orphans any observer AND drops our inline style
+ * (the same lesson as Sliders' watchAlign). `isNudged` makes the steady state a
+ * single property read.
+ */
+export function watchNudge(node) {
+  if (_nudgeTimers.has(node)) return;
+  const t = setInterval(() => {
+    if (!node.graph) { unwatchNudge(node); return; }
+    if (!isVueNodes()) return;                  // Classic uses widgets_start_y
+    nudgeIntoSlots(node);
+  }, 350);
+  _nudgeTimers.set(node, t);
+}
+
+export function unwatchNudge(node) {
+  const t = _nudgeTimers.get(node);
+  if (t) clearInterval(t);
+  _nudgeTimers.delete(node);
 }
