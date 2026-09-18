@@ -28,9 +28,8 @@ function injectCSS() {
    .pix-mp4-inner above, which is inset:0 over the same area so the video is
    clipped exactly as before, while the root no longer cuts this band off.
    pointer-events:none so the real input dots underneath stay wireable. */
-.pix-mp4-band { position:absolute; right:2px; height:14px; display:flex; align-items:center; justify-content:flex-end; pointer-events:none; font:11px Consolas,ui-monospace,monospace; color:#cdcdcd; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,0.6); }
+.pix-mp4-band { position:absolute; height:24px; display:flex; align-items:center; justify-content:flex-end; pointer-events:none; font:22px Consolas,ui-monospace,monospace; color:#cdcdcd; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,0.6); }
 .pix-mp4-band:empty { display:none; }
-.pix-mp4-band .sep { color:#5c5c5c; margin:0 5px; }
 .pix-mp4-media { position:relative; flex:1 1 0; min-height:0; overflow:hidden; }
 .pix-mp4-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
 .pix-mp4-bar.is-disabled { opacity:0.40; pointer-events:none; }
@@ -164,7 +163,13 @@ function refreshBar(node) {
 // Height of .pix-mp4-band, kept in step with the stylesheet so the centring
 // maths below does not have to measure it (a measurement of a display:none
 // element reads 0, and the band is :empty -> hidden most of its life).
-const BAND_H = 14;
+const BAND_H = 24;
+// LiteGraph insets the widget pills this far from each node edge when it paints
+// them (drawNodeWidgets' `margin`). The band's right edge is lined up with that
+// same edge so it reads as one column with the rows below it - MEASURED, the
+// root is 10px inset while the pills are 15px, so a band pinned to the root
+// stuck out by 3px, which is visible.
+const CLASSIC_WIDGET_MARGIN = 15;
 // First input row's CENTRE in node-local element px, for the CLASSIC renderer:
 // TOP_PAD 4 + i*NODE_SLOT_HEIGHT + NODE_SLOT_HEIGHT/2, i=0 (Vue Compat #16).
 const CLASSIC_FIRST_SLOT_Y = 14;
@@ -208,6 +213,19 @@ function placeBand(node) {
         const centre = sr.top + sr.height / 2;
         band.style.top =
           Math.round((centre - rootRect.top) / scale - BAND_H / 2) + "px";
+        // Line the band up with the WIDGET ROWS, not with our own root: MEASURED,
+        // the root sits 12px inside the rows' right edge here, so pinning the
+        // band to the root left it visibly short of every row beneath it. Pick a
+        // row that is not the one holding the band (ours is a widget row too).
+        const row = [...nodeEl.querySelectorAll(".lg-node-widget")]
+          .find((r) => !r.contains(band));
+        if (row) {
+          const rr = row.getBoundingClientRect();
+          band.style.right =
+            Math.round((rootRect.right - rr.right) / scale) + "px";
+        } else {
+          band.style.right = "0px";
+        }
         return;
       }
     }
@@ -220,9 +238,33 @@ function placeBand(node) {
       (rootRect.top - cvsRect.top) / scale - ds.offset[1] - node.pos[1];
     band.style.top =
       Math.round(CLASSIC_FIRST_SLOT_Y - rootTopLocal - BAND_H / 2) + "px";
+    // Classic paints the pills inset CLASSIC_WIDGET_MARGIN from the node edge
+    // while this root is inset less, so pin the band to the pills' edge rather
+    // than to the root's, or it hangs a few px further right than every row
+    // beneath it.
+    const rootRightLocal =
+      (rootRect.right - cvsRect.left) / scale - ds.offset[0] - node.pos[0];
+    const wantRightLocal = node.size[0] - CLASSIC_WIDGET_MARGIN;
+    band.style.right = Math.round(Math.max(0, rootRightLocal - wantRightLocal)) + "px";
   } catch (_e) {
     /* leave the band where it is rather than throwing during a paint */
   }
+}
+
+/** Re-place the band a few times while the layout settles.
+ *
+ * A ResizeObserver alone is NOT enough, and this was measured rather than
+ * guessed: on a fresh Nodes 2.0 load the root MOVES (the slot rows above it
+ * lay out) without its own size changing, so the observer never fires and the
+ * band keeps the offset it computed too early - `top` stuck at -233px where a
+ * settled measurement says -214px, i.e. 19px above the dot.
+ *
+ * A burst rather than a permanent poll: the cost is four timeouts per mount,
+ * and every one of them only writes the band's own top/right.
+ */
+function settleBand(node) {
+  requestAnimationFrame(() => placeBand(node));
+  for (const ms of [150, 500, 1500]) setTimeout(() => placeBand(node), ms);
 }
 
 /** Fill the band from the loaded clip, or clear it with "". */
@@ -232,20 +274,12 @@ function setBandFromVideo(node) {
   const v = getLiveVideo(node) || node._pixaromaVideo;
   const w = Number(v?.videoWidth) || 0;
   const h = Number(v?.videoHeight) || 0;
-  const d = Number(v?.duration);
   if (!w || !h) { band.textContent = ""; return; }
-  // Same wording Save Video Pixaroma already uses for its own summary, so the
-  // two nodes report a clip the same way (js/save_video/index.js).
-  band.textContent = "";
-  band.appendChild(document.createTextNode(`${w}x${h}`));
-  if (Number.isFinite(d) && d > 0) {
-    const sep = document.createElement("span");
-    sep.className = "sep";
-    sep.textContent = "·";
-    band.appendChild(sep);
-    band.appendChild(document.createTextNode(`${d.toFixed(1)}s`));
-  }
-  placeBand(node);
+  // The RESOLUTION only. The length is already on the node, in the player's own
+  // "0:00 / 0:15" readout a few rows down, so repeating it here just made the
+  // one number people actually want smaller.
+  band.textContent = `${w}x${h}`;
+  settleBand(node);
 }
 
 function clearBand(node) {
@@ -626,6 +660,8 @@ app.registerExtension({
         this._pixMp4ScrubMove = this._pixMp4ScrubUp = null;
         this._pixMp4RendererOff?.();
         this._pixMp4RendererOff = null;
+        this._pixMp4BandRO?.disconnect();
+        this._pixMp4BandRO = null;
         return protoRemoved?.apply(this, arguments);
       };
 
@@ -634,9 +670,21 @@ app.registerExtension({
       // onNodeCreated does not survive it (convention #39 / the renderer-change
       // rule). Re-place on every flip; placement is DOM style only, so this can
       // never dirty a workflow.
-      this._pixMp4RendererOff = onRendererChange(() => {
-        requestAnimationFrame(() => placeBand(node));
-      });
+      this._pixMp4RendererOff = onRendererChange(() => settleBand(node));
+
+      // Re-place whenever the body actually changes size. Two things need this,
+      // and BOTH were measured going wrong without it: on a fresh Nodes 2.0 page
+      // load the first placement runs before the Vue layout has settled and
+      // lands 8px off the dot, and in Classic the right-hand offset is derived
+      // from node.size[0], so dragging the node wider left the band behind.
+      // node.onResize is not reliable for a DOM widget (Vue Compat #13), so
+      // observe the element. placeBand only writes the band's own top/right, so
+      // it cannot change the root's size and cannot feed back into this.
+      try {
+        const ro = new ResizeObserver(() => placeBand(node));
+        ro.observe(wrap);
+        this._pixMp4BandRO = ro;
+      } catch (_e) { /* no ResizeObserver: the band just keeps its first place */ }
 
       refreshBar(node); // initial grayed state
 
@@ -651,6 +699,7 @@ app.registerExtension({
       // canvasOnly set adaptively: true in legacy (out of Parameters tab),
       // false in Nodes 2.0 so the <video> renders in the Vue body.
       applyAdaptiveCanvasOnly(widget);
+      settleBand(node);   // the first placement, once the body exists
 
       // NO custom computeSize on purpose (see header). The node's minimum
       // height sums this widget's computeLayoutSize().minHeight, so the floor
