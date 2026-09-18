@@ -1068,7 +1068,7 @@ const HELP = {
         body: "ComfyUI has two different kinds of video on the wire, and this node accepts both, so there are two inputs. You only ever need one of them.",
         defs: [
           ["video_frames", "A batch of frames. This is what Load Video Pixaroma's `video_frames` output gives you, and what a video model produces."],
-          ["video", "ComfyUI's own video type, such as the output of its Load Video node. The sound stored in the video comes along with it, so you do not need to wire `audio` as well."],
+          ["video", "ComfyUI's own video type, such as the output of its Load Video node. The sound stored in the video comes along with it, so you do not need to wire `audio` as well. It also keeps its own frame rate, so it comes out the same length it went in and the `fps` setting is ignored for it."],
         ],
       },
       {

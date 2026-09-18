@@ -74,6 +74,31 @@ def as_frame_batch(value):
     return value
 
 
+def frame_rate_of(components):
+    """The video's own frames-per-second, or None if it will not say.
+
+    This is NOT a nicety. Save Mp4 encodes at whatever `fps` says, and that
+    widget exists for the FRAMES path, where a batch of images has no inherent
+    rate. A VIDEO does have one, and ignoring it re-times the clip: MEASURED, a
+    30fps 3.02s source came back as 3.75s at the widget's default 24, i.e. the
+    picture in slow motion while the audio, which is not resampled, stays 3.02s
+    long and no longer matches it. Nothing errors; you just get a subtly broken
+    video.
+    """
+    fr = getattr(components, "frame_rate", None)
+    if fr is None:
+        return None
+    try:
+        fr = float(fr)          # core hands this over as a Fraction
+    except (TypeError, ValueError):
+        return None
+    # Refuse nonsense rather than encode with it; the caller falls back to the
+    # widget. The ceiling matches the fps widget's own max.
+    if not (0 < fr <= 120):
+        return None
+    return fr
+
+
 def audio_from_components(components):
     """The audio off a VideoComponents, or None.
 
@@ -85,7 +110,7 @@ def audio_from_components(components):
 
 
 def frames_and_audio_from_video(video, label="Save Mp4"):
-    """(frames, audio) from whatever is on a VIDEO wire.
+    """(frames, audio, fps) from whatever is on a VIDEO wire. fps may be None.
 
     Returns an IMAGE batch and either an AUDIO dict or None. Raises ValueError
     with our own wording for something that is neither a video nor usable as
@@ -97,7 +122,7 @@ def frames_and_audio_from_video(video, label="Save Mp4"):
         # on the wrong slot, which we can simply answer instead of refusing.
         frames = as_frame_batch(video)
         if frames is not None:
-            return frames, None
+            return frames, None, None
         raise ValueError(
             "[Pixaroma] %s - the video input received something that is not a "
             "video (a %s). Wire it to ComfyUI's Load Video, or use the "
@@ -111,14 +136,15 @@ def frames_and_audio_from_video(video, label="Save Mp4"):
             "[Pixaroma] %s - the wired video decoded to no frames at all. "
             "Check the file plays elsewhere." % label
         )
-    return frames, audio_from_components(components)
+    return frames, audio_from_components(components), frame_rate_of(components)
 
 
 def resolve_sources(video_frames, video, label="Save Mp4"):
     """Work out what to encode from the two mutually-exclusive inputs.
 
-    Returns (frames, audio_from_video, note). `note` is a line worth printing,
-    or "".
+    Returns (frames, audio_from_video, fps_from_video, note). `fps_from_video`
+    is None whenever the caller should keep its own `fps` widget value. `note`
+    is a line worth printing, or "".
 
     video_frames WINS when both are wired, matching First Last Frame Pixaroma
     (first-last-frame.md #1) so the two nodes cannot disagree about a graph.
@@ -130,16 +156,19 @@ def resolve_sources(video_frames, video, label="Save Mp4"):
         return (
             video_frames,
             None,
+            None,
             "[Pixaroma] %s - both video_frames and video are wired; using "
             "video_frames and ignoring video." % label,
         )
 
     if video_frames is not None:
-        return video_frames, None, ""
+        # The frames path keeps the fps widget: a batch of images has no rate
+        # of its own, which is exactly what that widget is for.
+        return video_frames, None, None, ""
 
     if video is not None:
-        frames, audio = frames_and_audio_from_video(video, label)
-        return frames, audio, ""
+        frames, audio, fps = frames_and_audio_from_video(video, label)
+        return frames, audio, fps, ""
 
     raise ValueError(
         "[Pixaroma] %s - nothing to save. Wire a batch of frames into "

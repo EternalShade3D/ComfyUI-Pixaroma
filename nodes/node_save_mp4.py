@@ -77,9 +77,11 @@ class PixaromaSaveMp4:
         "the sound stored in that video comes along with it. If both are "
         "connected, video_frames is the one that is used and the node says so "
         "in the console.\n\n"
-        "A video wired into the video input is decoded and encoded again, so "
-        "re-saving one costs a little quality, and a long clip is held in "
-        "memory while it is read. Feeding frames avoids both.\n\n"
+        "A video wired into the video input keeps its own frame rate, so it "
+        "comes out the same length it went in and its sound stays in step; the "
+        "fps setting applies to video_frames only. It is decoded and encoded "
+        "again, so re-saving one costs a little quality, and a long clip is "
+        "held in memory while it is read. Feeding frames avoids both.\n\n"
         "Frames stream straight to ffmpeg's stdin (no temp PNG files); audio "
         "is muxed in as AAC 192k. Pairs with AudioReact Pixaroma but works "
         "with any source that produces frames + AUDIO.\n\n"
@@ -106,7 +108,7 @@ class PixaromaSaveMp4:
         return {
             "required": {
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0,
-                    "tooltip": "Output frame rate. Wire Audio React Pixaroma's fps output here so it always matches what produced the frames."}),
+                    "tooltip": "Output frame rate for the video_frames input. Wire Audio React Pixaroma's fps output here so it always matches what produced the frames. A video wired into the video input brings its own frame rate and keeps it, so this is ignored for that input."}),
                 "filename_prefix": ("STRING", {"default": "Video",
                     "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4). Use '/' for subfolders, date tokens like %date:yyyy-MM-dd%, and node references like %Seed Pixaroma.seed% that print another node's field value into the name."}),
                 "save_mode": (["save", "preview"], {"default": "save",
@@ -180,11 +182,23 @@ class PixaromaSaveMp4:
         # any-type passthrough can deliver a list, a tensor or a string - and
         # pattern #13 was earned by a guard that lived OUTSIDE its try and
         # crashed the run after the output file had been claimed.
-        frames, video_audio, source_note = resolve_sources(
+        frames, video_audio, video_fps, source_note = resolve_sources(
             video_frames, video, "Save Mp4",
         )
         if source_note:
             print(source_note)
+        # A wired video knows its own frame rate, and it MUST win over the fps
+        # widget. That widget is for the frames path, where a batch of images
+        # has no rate of its own; applying it to a video re-times the clip.
+        # MEASURED before this: a 30fps 3.02s source came out 3.75s at the
+        # default 24, so the picture ran slow while the audio - which is not
+        # resampled - stayed 3.02s and no longer lined up. Nothing errored.
+        if video_fps is not None:
+            if abs(float(video_fps) - float(fps)) > 0.001:
+                print("[Pixaroma] Save Mp4 - using the video's own %g fps "
+                      "instead of the fps widget's %g, so it keeps its "
+                      "timing." % (float(video_fps), float(fps)))
+            fps_int = max(1, int(round(float(video_fps))))
         # A wired `audio` input wins over the sound that came in with a video:
         # it is the more specific thing the user asked for, and it is how they
         # replace a clip's sound track.
