@@ -196,14 +196,41 @@ function enforceRestriction(node) {
 }
 
 // ── node body render (just the switches) ───────────────────────────────────
-function bodyHeight(node) {
-  const b = bridge();
-  const hasBridge = !!(b && typeof b.listGroups === "function");
-  const rows = hasBridge ? visibleGroups(node).length : 0;
+function heightForRows(rows, hasBridge) {
   let h = ROOT_PAD + TOP_H;
   if (!hasBridge || rows === 0) h += HINT_H;
   else h += rows * ROW_H + Math.max(0, rows - 1) * ROW_GAP + LIST_PAD;
   return Math.max(MIN_BODY, h);
+}
+
+// ⚠️ THIS IS A PER-FRAME HOT PATH. It is what `node.computeSize` (Classic),
+// `getMinHeight` and `computeLayoutSize` all return, and the renderer calls
+// those while DRAWING - MEASURED at 2 calls per painted frame while the node is
+// on screen, 0 when it is scrolled off or collapsed.
+//
+// It used to walk the groups on every one of those calls: `visibleGroups` ->
+// `decoratedGroups` -> the bridge's `listGroups`, which builds an object for
+// every Pixaroma AND native group, then another object each, then SORTS. At
+// 60fps with 12 groups that is 120 walks and ~2900 allocations a second, for a
+// number that changes only when a group is added or removed. Reported on
+// Discord 2026-09-18 as "10% extra bus interface bandwidth and reduced
+// generation speed, only while it is visible on screen; collapsing, removing or
+// moving it off screen fixes it" - which is exactly the visible/off-screen
+// split above.
+//
+// So it now answers from a count `renderNode` caches. That costs NOTHING in
+// freshness: `refreshNodeSize` is only ever called FROM `renderNode`, so the
+// node's height already moved at the 350ms poll's pace and no faster. The
+// uncached walk stays as the first-call fallback, before any render has run.
+function bodyHeight(node) {
+  if (node && typeof node._pixGsRows === "number") {
+    return heightForRows(node._pixGsRows, node._pixGsHasBridge !== false);
+  }
+  const b = bridge();
+  const hasBridge = !!(b && typeof b.listGroups === "function");
+  const rows = hasBridge ? visibleGroups(node).length : 0;
+  if (node) { node._pixGsRows = rows; node._pixGsHasBridge = hasBridge; }
+  return heightForRows(rows, hasBridge);
 }
 // Snap the node to hug the body EXACTLY and SYNCHRONOUSLY (no rAF), in BOTH
 // renderers. Classic: node.computeSize is overridden in setupNode to return the
@@ -268,6 +295,12 @@ function renderNode(node) {
   const b = bridge();
   const hasBridge = !!(b && typeof b.listGroups === "function");
   const groups = visibleGroups(node);
+  // Feed bodyHeight's cache. Set BEFORE the signature early-return below, so the
+  // count stays right even on a tick where nothing else changed - this is the
+  // one place that already has the fresh number, and bodyHeight is called ~2x
+  // per painted frame and must never walk the groups itself. See bodyHeight.
+  node._pixGsRows = groups.length;
+  node._pixGsHasBridge = hasBridge;
   // Skip a rebuild when nothing the body shows has changed — keeps the 350ms
   // sync poll from churning the DOM (flicker + lost hover) every tick.
   const sig = JSON.stringify({
