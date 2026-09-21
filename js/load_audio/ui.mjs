@@ -113,7 +113,8 @@ export function injectCSS() {
 
   .pix-la-pop{
     position:fixed; z-index:10900; background:#232323; border:1px solid #555;
-    border-radius:6px; box-shadow:0 10px 30px rgba(0,0,0,0.5); overflow:auto;
+    border-radius:6px; box-shadow:0 10px 30px rgba(0,0,0,0.5);
+    max-height:320px; overflow:auto;
     font-family:'Segoe UI',sans-serif; padding:0.25em 0;
   }
   .pix-la-pop .it{
@@ -158,7 +159,17 @@ async function openPicker(node, anchor, onPick) {
   pop.appendChild(loading);
   document.body.appendChild(pop);
   _popup = pop;
-  placeZoomedPopup(pop, anchor, { baseFontPx: 12, minWidthPx: 160 });
+  // The height cap is TWO halves and needs BOTH - it was missing both until
+  // 2026-09-21, so the list grew to fit every file and ran off the bottom of the
+  // screen (reported on Discord 2026-09-18, at about 20 entries).
+  //   - `.pix-la-pop { max-height }` in the CSS governs at 100% zoom, because
+  //     popup_zoom.mjs deliberately CLEARS its own max-height at zoom <= 1 and
+  //     hands over to the stylesheet. Adding only the option below fixes nothing
+  //     at 100% zoom, which is where it was measured failing (417px, no scroll).
+  //   - `baseMaxHeightPx` here must MATCH that number, and is what scales the
+  //     cap when the canvas is zoomed IN.
+  // Same pairing as Dropdown (320/320) and XY Plot (340/340).
+  placeZoomedPopup(pop, anchor, { baseFontPx: 12, minWidthPx: 160, baseMaxHeightPx: 320 });
   document.addEventListener("pointerdown", outside, true);
   document.addEventListener("wheel", onWheel, true);
   document.addEventListener("keydown", onEsc, true);
@@ -186,7 +197,7 @@ async function openPicker(node, anchor, onPick) {
       pop.appendChild(it);
     }
   }
-  placeZoomedPopup(pop, anchor, { baseFontPx: 12, minWidthPx: 160 });
+  placeZoomedPopup(pop, anchor, { baseFontPx: 12, minWidthPx: 160, baseMaxHeightPx: 320 });
 }
 
 /** The `seconds` input slot, whatever index it sits at. */
