@@ -4,12 +4,37 @@
 // on the prompt-typing nodes were light text on a light node (measured 1.2:1 to
 // 1.4:1 contrast, about invisible) and every text box stayed black.
 //
-// THE SIGNAL. Core puts the class "dark-theme" on <html> for every dark palette
-// and removes it for a light one (GraphView.vue watches the active palette;
-// PrimeVue's own dark mode keys on the same class). So every rule below sits
-// under :where(:root:not(.dark-theme)). In a dark palette none of them can
-// match, which is why the dark look is untouched (measured: every element's
-// computed colours identical before and after).
+// THE SIGNAL, rewritten 2026-09-21 after a user report. Every rule below now
+// sits under :where(html.pix-light), a class THIS FILE puts on when it has
+// POSITIVE evidence the palette is light. The default is therefore dark, which
+// is what every node face in the pack is drawn for.
+//
+// The first version keyed on core's own class instead, as :root:not(.dark-theme),
+// i.e. "go light unless the page proves it is dark". Core adds that class from
+// GraphView.vue:
+//     if (newTheme.light_theme) remove('dark-theme') else add('dark-theme')
+// so it is driven by a palette's OPTIONAL `light_theme` boolean
+// (colorPaletteSchema.ts: z.boolean().optional()). Anywhere that watcher does
+// not run - an older frontend, a palette id that fails to resolve, a palette
+// whose flag disagrees with its own colours - the class is simply absent, our
+// rules all matched, and the prompt nodes turned WHITE on a dark canvas. That
+// was reported on Discord 2026-09-19 by a user who ended up commenting this
+// file out to get his dark nodes back, which is the worst possible outcome.
+//
+// The replacement asks the palette's own COLOURS instead of its flag: light
+// when the page background is lighter than the page text. Core writes both from
+// the active palette (colorPaletteService.ts sets them as inline custom
+// properties on <html>, and <body> inherits them as real colour properties), so
+// this tracks the palette itself and cannot be out of step with it.
+// MEASURED against all six palettes core ships - arc, dark, github, light,
+// solarized, nord - the verdict matches each one's own `light_theme` flag, with
+// the nearest miss still two orders of magnitude clear (light 0.723 vs 0.016;
+// the darkest dark 0.011 vs 0.818). It is a COMPARISON, not a threshold, so
+// there is no cutoff to tune and a mid-grey palette still resolves correctly.
+//
+// In a dark palette no rule below can match, which is why the dark look is
+// untouched (measured: every element's computed colours identical before and
+// after).
 //
 // THE SPECIFICITY TRICK, and why this sheet does not care about load order.
 // :where() adds nothing. Each rule then names the element TYPE with the class
@@ -24,7 +49,8 @@
 // Floating panels, popups and confirm dialogs stay dark, like every other
 // Pixaroma panel. Extending to another node = more rules here, same pattern.
 
-const LIGHT = ":where(:root:not(.dark-theme))";
+const LIGHT = ":where(html.pix-light)";
+const LIGHT_CLASS = "pix-light";
 
 // A light palette paints a Pixaroma node's BODY #AAAAAA (measured: the canvas
 // pixel in Classic, the Vue body in Nodes 2.0), so text sitting straight on the
@@ -199,10 +225,122 @@ ${LIGHT} div.pix-fr-root .pix-fr-prev-trunc { color:#8a4a66; }
 ${LIGHT} div.pix-fr-root .pix-fr-warn { color:#8a5a00; }
 `;
 
-// True while ComfyUI shows a light colour palette. Read live, so a canvas paint
-// (Pause Text's Classic status line) follows a theme switch on its next frame.
+// ── deciding which palette is on ──────────────────────────────────────────
+//
+// "Auto" measures; "Dark" and "Light" are the user overriding the measurement.
+// The mode is PUSHED in by brand/index.js from its setting's onChange (which
+// must use its ARGUMENT - a setting's onChange fires BEFORE the store write),
+// so this module needs no ComfyUI import and cannot form a cycle.
+let _mode = "Auto";
+
+// Both values arrive from getComputedStyle on a real colour property, so the
+// browser has already normalised them to rgb()/rgba(). The hex branch is only
+// for the raw custom-property fallback below, where the value is as-authored.
+function parseColor(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  const m = s.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i);
+  if (m) {
+    let a = m[4] == null ? 1 : (m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4]));
+    return [+m[1], +m[2], +m[3], a];
+  }
+  let h = s.startsWith("#") ? s.slice(1) : null;
+  if (!h) return null;
+  if (h.length === 3 || h.length === 4) h = h.split("").map((c) => c + c).join("");
+  if (h.length !== 6 && h.length !== 8) return null;
+  if (!/^[0-9a-f]+$/i.test(h)) return null;
+  const n = (i) => parseInt(h.slice(i, i + 2), 16);
+  return [n(0), n(2), n(4), h.length === 8 ? n(6) / 255 : 1];
+}
+
+// WCAG relative luminance. Used only to compare two colours with each other,
+// never against a fixed cutoff.
+function luminance(c) {
+  const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]);
+}
+
+// Light when the palette's background is lighter than the palette's text.
+//
+// ⚠️ MUST read the CUSTOM PROPERTIES, not <body>'s computed colours. The first
+// cut of this used the body pair, on the reasoning that real colour properties
+// come back already normalised to rgb() so nothing can mis-parse. The test for
+// the actual reported case killed it: with a DARK palette and the "dark-theme"
+// class removed - which is the bug, exactly as the user has it - <body>'s
+// `color` flips to rgb(0,0,0), because core's own stylesheets key text colour
+// on that class too, while the background correctly stays #202020. The pair
+// then reads "dark background, darker text" and the comparison answers LIGHT:
+// the very failure this rewrite exists to stop, reintroduced one layer down.
+// MEASURED: --bg-color / --fg-color are byte-identical with the class present
+// and absent, because colorPaletteService writes them from the palette itself.
+//
+// Order of evidence, each step used only if the one before cannot answer:
+//   1. --bg-color vs --fg-color. Palette driven, and proven class independent.
+//   2. <body>'s BACKGROUND alone against a mid cutoff. Its background is not
+//      contaminated (measured above), only its text is. A threshold is weaker
+//      than a comparison, so it is a fallback, not the main path.
+//   3. Nothing readable: DARK. The pack is drawn dark, so an unknown page must
+//      never be painted light. This is the inversion the old code got wrong.
+// Core's "dark-theme" class is deliberately NOT consulted: it is the signal
+// that failed, and it can be wrong in both directions (absent on a dark
+// palette, which is the reported bug, and present on a light one whose
+// optional light_theme flag was never set).
+function detectLight() {
+  try {
+    const hs = getComputedStyle(document.documentElement);
+    const bg = parseColor(hs.getPropertyValue("--bg-color"));
+    const fg = parseColor(hs.getPropertyValue("--fg-color"));
+    if (bg && fg) return luminance(bg) > luminance(fg);
+
+    if (document.body) {
+      // alpha: a transparent body tells us nothing about what shows through.
+      const bbg = parseColor(getComputedStyle(document.body).backgroundColor);
+      if (bbg && bbg[3] > 0.5) return luminance(bbg) > 0.5;
+    }
+  } catch { /* fall through to dark */ }
+  return false;
+}
+
+function resolveLight() {
+  if (_mode === "Light") return true;
+  if (_mode === "Dark") return false;
+  return detectLight();
+}
+
+// Writes the class only when the answer CHANGES. A class on <html> is the most
+// expensive thing on the page to churn (every Pixaroma sheet is scoped to one),
+// so this must never write on a tick where nothing moved - see CLAUDE.md
+// convention #36 for what class churn costs.
+function applyTheme() {
+  try {
+    const want = resolveLight();
+    const el = document.documentElement;
+    if (el.classList.contains(LIGHT_CLASS) !== want) el.classList.toggle(LIGHT_CLASS, want);
+  } catch { /* nothing to do */ }
+}
+
+// Core sets the palette as ~40 inline custom properties on <html>, one call
+// each, plus its own class. So watch that element's attributes and coalesce the
+// burst into ONE recompute. Event driven, so the idle cost is nil - no poll.
+let _scheduled = false;
+function scheduleApply() {
+  if (_scheduled) return;
+  _scheduled = true;
+  setTimeout(() => { _scheduled = false; applyTheme(); }, 60);
+}
+
+// Called by brand/index.js when the user picks a mode. Takes the value rather
+// than reading it back, because a setting's onChange runs before the store write.
+export function setThemeMode(mode) {
+  _mode = (mode === "Dark" || mode === "Light") ? mode : "Auto";
+  applyTheme();
+}
+
+// True while ComfyUI shows a light colour palette. Reads the class this module
+// maintains, so a canvas paint (Pause Text's Classic status line) and the
+// stylesheet can never disagree about which theme is on.
 export function isLightTheme() {
-  try { return !document.documentElement.classList.contains("dark-theme"); } catch { return false; }
+  try { return document.documentElement.classList.contains(LIGHT_CLASS); } catch { return false; }
 }
 
 // One stylesheet for the whole page, injected once. Safe to call repeatedly.
@@ -213,5 +351,18 @@ export function installTextNodesLightTheme() {
     s.id = "pix-light-text-nodes";
     s.textContent = CSS;
     document.head.appendChild(s);
+
+    applyTheme();
+    // <body> may not exist yet at import time, and its colours are the best
+    // evidence, so re-decide once the document is ready.
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", applyTheme, { once: true });
+    }
+    try {
+      new MutationObserver(scheduleApply).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class", "style"],
+      });
+    } catch { /* no observer: the theme is then decided once, at load */ }
   } catch { /* no document yet: nothing to theme */ }
 }

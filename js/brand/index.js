@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { installPixaromaChangeNet } from "../shared/graph_changed.mjs";
 import { installBypassRepair } from "../shared/bypass_repair.mjs";
-import { installTextNodesLightTheme } from "../shared/light_theme.mjs";
+import { installTextNodesLightTheme, setThemeMode } from "../shared/light_theme.mjs";
 
 // ── Pixaroma brand defaults ──────────────────────────────────────────────
 // Single source of truth for the dark brand colors that every Pixaroma node
@@ -43,6 +43,25 @@ installTextNodesLightTheme();
 
 app.registerExtension({
   name: "Pixaroma.BrandDefaults",
+  settings: [
+    {
+      // The escape hatch for the light/dark decision. Auto measures the active
+      // palette's own colours; the other two are the user saying the measurement
+      // is wrong for them. Asked for by the reporter of the 2026-09-19 bug, who
+      // had no way out except editing light_theme.mjs by hand.
+      id: "Pixaroma.Theme.Mode",
+      name: "Node look",
+      type: "combo",
+      defaultValue: "Auto",
+      options: ["Auto", "Dark", "Light"],
+      tooltip:
+        "Which look the Pixaroma prompt and text nodes use. Auto follows ComfyUI's colour palette. Pick Dark or Light to force one, if Auto reads your palette wrongly.",
+      category: ["👑 Pixaroma", "Theme"],
+      // A setting's onChange fires BEFORE the store write, so use the argument
+      // and never re-read the value here.
+      onChange: (value) => setThemeMode(value),
+    },
+  ],
   async beforeRegisterNodeDef(nodeType, nodeData) {
     const cat = nodeData?.category;
     if (typeof cat !== "string" || !cat.startsWith("👑 Pixaroma")) return;
