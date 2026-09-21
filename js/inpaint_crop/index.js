@@ -12,7 +12,7 @@ import "./render.mjs";  // mixin: canvas render + save
 import {
   createNodePreview, showNodePreview, restoreNodePreview, clearNodePreview, activateNodePreview,
   downloadDataURL, applyAdaptiveCanvasOnly,
-  installCanvasZoomPassthrough,
+  installCanvasZoomPassthrough, onRouterChanged,
 } from "../shared/index.mjs";
 
 const SIZE_MODE_MAP = {
@@ -391,9 +391,28 @@ app.registerExtension({
     let stateJson = "{}";
     let widget;
 
+    // Show the upstream picture - and CLEAR when there is no longer one.
+    //
+    // It used to paint only when it FOUND a url and never clear, so when the
+    // source went away (a router flipped to an unwired row, a wire pulled) the
+    // node kept showing the PREVIOUS picture: stale, which reads as correct and
+    // is worse than blank. Flagged in `.claude/patterns/inpaint.md` #18 as "fix
+    // it when someone is next in this file".
+    //
+    // The else is `restoreNodePreview`, NOT a bare clear, because a source can
+    // legitimately have no wire at all - one loaded through the editor's own
+    // Load Image lives in `stateJson.src_path`. restoreNodePreview rebuilds
+    // from that when it is there and falls back to the placeholder when it is
+    // not, so the editor-loaded case survives.
+    //
+    // isGraphLoading: this must never repaint while a workflow is opening -
+    // nothing here writes serialized state, but the load path is where a wrong
+    // answer would be baked in (Vue Compat #18/#19).
     const refreshSourcePreview = () => {
       const url = getUpstreamImageURL(node);
-      if (url) showNodePreview(parts, url, null, node);
+      if (url) { showNodePreview(parts, url, null, node); return; }
+      if (isGraphLoading()) return;
+      restoreNodePreview(parts, stateJson, node);
     };
 
     // ── Open mask editor button ──
@@ -519,6 +538,16 @@ app.registerExtension({
     };
     api.addEventListener("executed", onExec);
 
+    // A router flipping its live branch changes what is wired into us, and
+    // LiteGraph fires nothing for it (no wire moved, no node added). Our routers
+    // announce it instead - see js/shared/router_changed.mjs for why this is a
+    // signal and not the 800ms per-node poll the reporter's agent used. Costs
+    // nothing until somebody actually clicks a Switch.
+    const offRouter = onRouterChanged(() => {
+      if (isGraphLoading()) return;
+      node._pixInpaintRefresh?.();
+    });
+
     // wrap (don't clobber) any existing handler from the prototype / another ext;
     // forward all args, then run our image-input source-preview logic.
     const origConnChange = node.onConnectionsChange;
@@ -539,6 +568,7 @@ app.registerExtension({
       try { parts?.resizeObserver?.disconnect(); } catch (e) {}
       origRemoved?.call(node);
       try { api.removeEventListener("executed", onExec); } catch {}
+      try { offRouter(); } catch {}
     };
   },
 });

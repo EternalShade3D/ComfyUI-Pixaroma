@@ -10,6 +10,7 @@
 //   visibleCount - number of input slots currently shown
 
 import { app } from "/scripts/app.js";
+import { notifyRouterChanged } from "../shared/router_changed.mjs";
 import { ROW_H, TOP_PAD } from "./render.mjs";
 import { isVueNodes } from "../shared/nodes2.mjs";
 
@@ -341,6 +342,10 @@ export function setActiveRow(node, slotIdx1) {
   updateOutputType(node);
   app.graph?.setDirtyCanvas?.(true, true);
   node._pixSwRefresh?.();
+  // Tell anything that shows a picture of what is wired into it (Inpaint Crop)
+  // that the live branch moved. Safe here: every caller is a click handler, and
+  // the no-op early-return above means this only fires on a REAL change.
+  notifyRouterChanged(node);
   return true;
 }
 

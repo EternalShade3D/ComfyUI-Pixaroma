@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
+import { notifyRouterChanged } from "../shared/router_changed.mjs";
 import {
   STATE_PROP, MAX_ROWS, CONTROL_BAND,
   readState, writeState,
@@ -189,11 +190,16 @@ function buildControls(node) {
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       const s = readState(node);
+      const was = s.active;
       s.active = b.dataset.value;
       writeState(node, s);
       refresh();
       updateOutputLabels(node);
       node.graph?.setDirtyCanvas?.(true, true);
+      // Same reason as Switch's setActiveRow: a node showing a picture of what
+      // is wired into it (Inpaint Crop) asks us which bank is live, and nothing
+      // else would tell it we moved. Only on a REAL change.
+      if (was !== s.active) notifyRouterChanged(node);
     });
   }
   for (const b of [btnConn, btnStrict]) {
