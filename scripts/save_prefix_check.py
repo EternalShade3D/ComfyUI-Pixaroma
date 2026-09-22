@@ -40,7 +40,11 @@ CASES = [
     # ── Windows-illegal characters are neutralized to '_' ─────────────────
     ('a<b>c:d"e|f?g*h', "a_b_c_d_e_f_g_h"),
     ("a\tb", "a_b"),                       # control chars too
-    ("C:\\Users\\x", "C/Users/x"),         # drive colon neutralized, \ -> /
+    # The drive colon becomes '_' and that '_' now SURVIVES, because the strip
+    # is front-only since 2026-09-22 (see _sanitize_segment). Containment is
+    # unchanged: the colon is still neutralized, so this stays a plain relative
+    # segment inside the save folder.
+    ("C:\\Users\\x", "C_/Users/x"),        # drive colon -> '_', \ -> /
 
     # ── Windows reserved device names get a '_' suffix ────────────────────
     ("CON/img", "CON_/img"),
@@ -55,8 +59,22 @@ CASES = [
     ("img", "img"),
     ("SDXL/portrait", "SDXL/portrait"),
     ("a__b", "a_b"),                       # underscore collapse retained
-    ("_edge_", "edge"),                    # edge-underscore strip retained
     ("???", None),                         # nothing usable -> fallback
+
+    # ── Underscores: FRONT stripped, TRAILING kept (2026-09-22) ───────────
+    # Reported: "Save Image Pixaroma I can't get the _". ComfyUI's own
+    # SaveImage writes name_00001_.png and `name_%counter%_` silently lost the
+    # underscore, with no way to get it back. A leading one is nearly always
+    # the residue of a token that resolved to nothing, so that strip stays.
+    ("_edge_", "edge_"),
+    ("_lead", "lead"),                     # leading residue still tidied
+    ("trail_", "trail_"),                  # THE REPORTED CASE
+    ("name_%counter%_", "name_%counter%_"),  # what the reporter types
+    ("a/b_/c_", "a/b_/c_"),                # per segment, not only the last
+    ("_", None),                           # front strip leaves nothing
+    ("__", None),                          # collapses to '_', then stripped
+    ("x__", "x_"),                         # the run still collapses to one
+    ("test._", "test._"),                  # legal: does not END in a dot
 
     # ── Tokens ────────────────────────────────────────────────────────────
     ("%date:yyyy-MM-dd%/img", _today + "/img"),

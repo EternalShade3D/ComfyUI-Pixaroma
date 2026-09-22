@@ -126,15 +126,21 @@ export function sanitizePrefixMirror(input) {
   const segs = s.split("/");
   if (s.startsWith("/") || segs.some((p) => p === "..")) return "";
   return segs
-    // loop until stable: edge spaces, edge underscores and trailing dots can
-    // shadow each other, exactly as the Python comment describes ("test._"
-    // needs two passes)
+    // loop until stable: edge spaces, a LEADING underscore and trailing dots
+    // can shadow each other, exactly as the Python comment describes.
+    // ⚠️ The underscore strip is FRONT-ONLY, matching _sanitize_segment since
+    // 2026-09-22: a trailing underscore is legal and deliberate (people write
+    // `name_%counter%_` so they can append a description, the shape core's own
+    // SaveImage produces), while a leading one is nearly always the residue of
+    // a token that resolved to nothing. Keep the two sides identical - a
+    // partial mirror of this rule has caused two review rounds of preview
+    // lines promising paths the node would never write (save-image.md #21).
     .map((seg) => {
       let prev = null;
       let cur = seg;
       while (prev !== cur) {
         prev = cur;
-        cur = cur.trim().replace(/^_+|_+$/g, "").replace(/[. ]+$/, "");
+        cur = cur.trim().replace(/^_+/, "").replace(/[. ]+$/, "");
       }
       return cur;
     })

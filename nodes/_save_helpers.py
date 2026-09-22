@@ -160,15 +160,31 @@ def _sanitize_segment(seg):
     Trailing dots/spaces are stripped because Windows itself silently strips
     them at create time - stripping here keeps the reported path identical
     to what actually lands on disk.
+
+    ⚠️ UNDERSCORES ARE STRIPPED FROM THE FRONT ONLY, AND THE ASYMMETRY IS THE
+    POINT (reported 2026-09-21: "Save Image Pixaroma I can't get the _").
+    ComfyUI's own SaveImage writes `name_00001_.png`, and someone appending a
+    description after the counter wants that same shape - but `name_%counter%_`
+    silently came out `name_00001`, with no way to get the underscore back. A
+    trailing underscore is perfectly legal on every filesystem we support, so
+    there was nothing to protect against; it was tidying, and it removed
+    something deliberate. A LEADING one is different: it is nearly always the
+    residue of a token that resolved to nothing (an unwired `%input%_%counter%`
+    leaves `_%counter%`), so that strip stays.
+
+    Consequence, accepted: the mirror case `%counter%_%input%` with nothing
+    wired now keeps its trailing underscore too, where it used to be tidied
+    away. That is what the pattern literally says, and it disappears the moment
+    the input is wired.
     """
     cleaned = _DISALLOWED_CHAR_RE.sub("_", seg)
     cleaned = _MULTI_UNDERSCORE_RE.sub("_", cleaned)
-    # Loop until stable: edge whitespace, edge underscores, and trailing
-    # dots/spaces can shadow each other (e.g. "test._" needs two passes).
+    # Loop until stable: edge whitespace, a leading underscore, and trailing
+    # dots/spaces can shadow each other (e.g. " _x. " needs two passes).
     prev = None
     while prev != cleaned:
         prev = cleaned
-        cleaned = cleaned.strip().strip("_").rstrip(". ")
+        cleaned = cleaned.strip().lstrip("_").rstrip(". ")
     if cleaned and cleaned.split(".", 1)[0].upper() in _WIN_RESERVED_NAMES:
         cleaned += "_"
     return cleaned
