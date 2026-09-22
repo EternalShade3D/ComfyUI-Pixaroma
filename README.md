@@ -392,6 +392,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **September 22, 2026 · v1.4.159**
+- **Fixed: Music Prompt Pixaroma closed ComfyUI part way through a run**, on ComfyUI 0.37.0. It writes the caption and the lyrics again.
+
 ### **September 21, 2026 · v1.4.158**
 - **Fixed: the prompt and text nodes used the wrong look for your theme** — white on a dark one, dark on a light one. A new **Node look** setting can force either.
 - **Fixed: Load Audio Pixaroma's file list ran off the screen.** It scrolls now.
