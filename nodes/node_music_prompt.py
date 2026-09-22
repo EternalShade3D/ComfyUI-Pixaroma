@@ -39,7 +39,7 @@ from ._music_prompt_helpers import (
 # The SHARED loader and the SHARED one-entry cache. Importing rather than
 # copying is the one architectural rule of this node: these took twenty-odd
 # documented fixes on the sibling and a second copy would drift.
-from .node_ai_prompt import _load_clip, _release_clip
+from .node_ai_prompt import _load_clip, _release_clip, reset_generation_runtime
 
 _NEEDED = (
     "  Put a language model in your ComfyUI/models/text_encoders folder and\n"
@@ -51,6 +51,10 @@ _NEEDED = (
 
 
 class PixaromaMusicPrompt:
+    # Generations completed in the CURRENT execution. On the class as well as in
+    # run(), so _ask can never raise AttributeError if it is ever reached first.
+    _passes = 0
+
     DESCRIPTION = (
         "Turns one idea into the two pieces of writing a music model needs: a caption "
         "describing how the song should SOUND, and the lyrics that get sung. Wire both "
@@ -132,6 +136,15 @@ class PixaromaMusicPrompt:
     # ---- generation ------------------------------------------------------
     def _ask(self, clip, prompt, sampling, seed, model_name):
         """One generation. Byte-identical call shape to core's TextGenerate."""
+        # ComfyUI resets its per-node memory machinery between NODES, and this
+        # node generates twice inside ONE. Without the reset the second
+        # generation aborts the whole ComfyUI process on 0.37.0 - see
+        # reset_generation_runtime(). Counted rather than hard-coded to "before
+        # the lyrics" so a third pass cannot be added without the reset.
+        if self._passes:
+            reset_generation_runtime()
+        self._passes += 1
+
         prompt = apply_no_think(prompt, False, model_name)
         tokens = clip.tokenize(
             prompt,
@@ -169,6 +182,10 @@ class PixaromaMusicPrompt:
 
     def run(self, clip=None, text=None, MusicPromptState="{}"):
         started = time.time()
+        # ComfyUI reuses this object across runs, so the pass counter is reset
+        # here rather than in __init__ - a value left over from the last run
+        # would make the FIRST generation pay for a reset it does not need.
+        self._passes = 0
         st = parse_state(MusicPromptState)
 
         wired = as_text(text)

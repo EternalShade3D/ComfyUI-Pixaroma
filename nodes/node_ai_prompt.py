@@ -77,6 +77,64 @@ def _release_clip(clip=None):
         pass
 
 
+_RUNTIME_WARNED = False
+
+
+def reset_generation_runtime():
+    """Give ComfyUI the between-node reset it never gets INSIDE one node.
+
+    ComfyUI 0.37.0 added Aimdo dynamic VRAM loading and CUDA-graph decoding for
+    the Qwen3/3.5 encoders, and `execution.py` resets that machinery in a
+    `finally` after EVERY node. A node that generates TWICE therefore runs its
+    second generation against the first one's live prefetch and malloc-graph
+    state: the KV write indexes out of bounds, CUDA's device-side assert fires,
+    and the WHOLE ComfyUI PROCESS aborts. That is not an exception a node can
+    catch - the server simply disappears, taking the queue with it.
+
+    Reproduced with a throwaway node containing nothing but two core
+    `clip.generate` calls, so the defect is core's; two generations in two
+    SEPARATE nodes are fine, because each one gets the executor's cleanup. The
+    workaround is to run core's own cleanup ourselves, which is why this is a
+    copy of those three lines and must stay one - if core changes what a node
+    boundary resets, this has to follow.
+
+    Reported 2026-09-21 (EmerJP, Semirhaged) against Music Prompt, which is the
+    only node in the pack that generates twice in one execution.
+
+    Every symbol here is version-dependent, so nothing may raise: on a ComfyUI
+    without this machinery there is simply nothing to reset, and on one with it
+    a failed reset must not take the generation with it. It DOES warn once,
+    because a silent failure here means the next generation kills the process.
+    """
+    global _RUNTIME_WARNED
+    # An older ComfyUI has none of this, which is not a failure and must not
+    # warn - there is genuinely nothing to reset. Only a reset that EXISTS and
+    # then goes wrong is worth saying anything about.
+    try:
+        import comfy.memory_management
+    except Exception:
+        return
+    if not getattr(comfy.memory_management, "aimdo_enabled", False):
+        return
+
+    try:
+        import comfy.model_prefetch
+        import comfy_aimdo.model_vbar
+
+        comfy.model_prefetch.cleanup_prefetch_queues()
+        comfy.model_management.reset_cast_buffers()
+        comfy_aimdo.model_vbar.vbars_reset_watermark_limits()
+    except Exception as e:
+        if not _RUNTIME_WARNED:
+            _RUNTIME_WARNED = True
+            print(
+                "[Pixaroma] could not reset ComfyUI's per-node memory state "
+                "between two generations (%s). If ComfyUI closes itself during "
+                "a Music Prompt run, that is why - generate the caption and the "
+                "lyrics with two AI Prompt nodes instead." % e
+            )
+
+
 _NEEDED = (
     "  Put a language model in your ComfyUI/models/text_encoders folder and\n"
     "  pick it from the gear on the node. For anything that has to SEE a\n"
