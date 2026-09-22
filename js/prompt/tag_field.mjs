@@ -304,11 +304,48 @@ export function paintExpanded(text, spans) {
  * never dirty a workflow. Drive it from a ResizeObserver on the TEXTAREA - never on
  * the backdrop, whose padding this mutates, or it re-fires forever.
  */
+// The properties that decide WHERE A LINE BREAKS. Copied from the live textarea
+// onto the backdrop every relayout, as LONGHANDS, never the `font` shorthand (the
+// computed shorthand serialises to "" whenever a sub-property makes it
+// unserialisable, which would silently drop the backdrop back to the node body's
+// font). `js/shared/line_numbers.mjs::copyTextMetrics` is where this idiom comes
+// from and is the reference; it is not shared yet because that module mirrors a
+// textarea into a MEASURING mirror and this one into a VISIBLE layer, so the two
+// lists are free to diverge. Keep them in step by hand if you change either.
+//
+// WHY it is not enough to declare the same values in both stylesheets, which is
+// what the CSS already does: a ComfyUI theme, a user stylesheet or a font
+// extension can restyle `textarea` without touching our div, and then the two
+// layers wrap at different characters. That error ACCUMULATES down the box, which
+// is the whole "the caret is nowhere near what I type" family (prompt.md #18,
+// house convention #26). Declaring a value is not owning it - measuring is.
+//
+// `text-transform` and `text-indent` are deliberately NOT copied: both change what
+// the user READS on the visible layer, and neither has ever been implicated.
+function mirrorTextMetrics(bd, cs) {
+  bd.style.fontStyle = cs.fontStyle;
+  bd.style.fontVariant = cs.fontVariant;
+  bd.style.fontWeight = cs.fontWeight;
+  bd.style.fontSize = cs.fontSize;
+  bd.style.fontFamily = cs.fontFamily;
+  bd.style.fontStretch = cs.fontStretch;
+  bd.style.letterSpacing = cs.letterSpacing;
+  bd.style.wordSpacing = cs.wordSpacing;
+  bd.style.lineHeight = cs.lineHeight;
+  bd.style.whiteSpace = cs.whiteSpace;
+  bd.style.overflowWrap = cs.overflowWrap;
+  bd.style.wordBreak = cs.wordBreak;
+  bd.style.tabSize = cs.tabSize;
+}
+
 export function syncColumns(ta, bd) {
   if (!ta || !bd || !ta.isConnected) return;
   bd.style.paddingRight = "";
   bd.style.width = "";
   const cs = getComputedStyle(ta), bs = getComputedStyle(bd);
+  // Before the width maths, because a mismatched font is the other half of the
+  // same failure and neither correction is any use on its own.
+  mirrorTextMetrics(bd, cs);
   const taText = ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
   const padR = parseFloat(bs.paddingRight);
   const bdText = bd.clientWidth - parseFloat(bs.paddingLeft) - padR;
